@@ -57,12 +57,12 @@ The user can review the recorded events and correct mistakes.
 
 The application should allow the user to:
 
-* Add an event
-* Edit an event
-* Delete an event
-* Undo the most recent event
-* Change team names
-* Change the starting score
+- Add an event
+- Edit an event
+- Delete an event
+- Undo the most recent event
+- Change team names
+- Change the starting score
 
 ### 4. Save Game Data
 
@@ -70,12 +70,12 @@ The score timeline should be saved separately from the original video.
 
 The saved data should contain at least:
 
-* Video information
-* Team names
-* Starting score
-* Score-change events
-* Video timestamps
-* Resulting scores
+- Video information
+- Team names
+- Starting score
+- Score-change events
+- Video timestamps
+- Resulting scores
 
 ### 5. Generate Scored Video
 
@@ -139,30 +139,30 @@ The original video remains unchanged.
 
 ## Non-Functional Requirements
 
-* Windows desktop application.
-* Simple and easy-to-use interface.
-* The application should work offline.
-* The original video must never be modified.
-* Score recording should be fast enough to use while watching a live game recording.
-* The application should handle long video files.
-* Video processing should provide progress information.
-* The application should handle errors without losing the saved score data.
+- Windows desktop application.
+- Simple and easy-to-use interface.
+- The application should work offline.
+- The original video must never be modified.
+- Score recording should be fast enough to use while watching a live game recording.
+- The application should handle long video files.
+- Video processing should provide progress information.
+- The application should handle errors without losing the saved score data.
 
 ## Future Possibilities
 
 These features are intentionally outside the initial version but may be considered later:
 
-* Multiple sets in one game.
-* Automatic detection of set changes.
-* Volleyball-specific statistics.
-* Player information and jersey numbers.
-* Rally and rotation tracking.
-* Export score data to CSV.
-* Generate YouTube chapters.
-* Custom scoreboard themes.
-* Automatic rally detection using computer vision or AI.
-* Player recognition.
-* Automatic score recognition from the original video.
+- Multiple sets in one game.
+- Automatic detection of set changes.
+- Volleyball-specific statistics.
+- Player information and jersey numbers.
+- Rally and rotation tracking.
+- Export score data to CSV.
+- Generate YouTube chapters.
+- Custom scoreboard themes.
+- Automatic rally detection using computer vision or AI.
+- Player recognition.
+- Automatic score recognition from the original video.
 
 ## Initial Scope
 
@@ -176,9 +176,9 @@ AI and automatic score recognition are **not part of Version 1**.
 
 The initial implementation is planned to use:
 
-* **Python** — application programming language
-* **PySide6** — desktop GUI
-* **FFmpeg** — video processing and score overlay
-* **JSON or SQLite** — project and score data storage
+- **Python** — application programming language
+- **PySide6** — desktop GUI
+- **FFmpeg** — video processing and score overlay
+- **JSON or SQLite** — project and score data storage
 
 The technology choices may evolve as the project develops.
