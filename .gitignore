@@ -1,0 +1,8 @@
+# Don't upload the Python virtual environment
+.venv/
+
+# Don't upload Python's temporary bytecode cache
+__pycache__/
+
+# Don't upload compiled Python files
+*.pyc
