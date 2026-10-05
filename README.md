@@ -89,7 +89,7 @@ For example:
 00:00:00 - 00:13:04    12 - 12
 00:13:04 - 00:13:27    13 - 12
 00:13:27 - 00:13:51    13 - 13
-00:13:51 - ...          14 - 13
+00:13:51 - ...         14 - 13
 ```
 
 The score is rendered onto the video in a fixed location, such as the top-left or top-right corner.
@@ -100,47 +100,42 @@ The original video remains unchanged.
 
 ### Video Playback
 
-* Open common video formats, initially MP4.
-* Play and pause.
-* Seek to a specific position.
-* Display current video time.
-* Display total video duration.
-* Support keyboard shortcuts where practical.
+- Open common video formats, initially MP4.
+- Play and pause.
+- Seek to a specific position.
+- Display current video time.
+- Display total video duration.
+- Support keyboard shortcuts where practical.
 
 ### Score Management
 
-* Two teams.
-* Configurable team names.
-* Configurable starting score.
-* Add one point to either team.
-* Display the current score.
-* Record the exact video timestamp for each score change.
-* Undo the last score change.
-* Edit or delete score events.
+- Two teams.
+- Configurable team names.
+- Configurable starting score.
+- Add one point to either team.
+- Display the current score.
+- Record the exact video timestamp for each score change.
+- Undo the last score change.
+- Edit or delete score events.
 
 ### Project Management
 
-* Create a new game project.
-* Save game data.
-* Open an existing game project.
-* Associate a project with a video file.
-* Keep score data separate from the original video.
+- Create a new game project.
+- Save game data.
+- Open an existing game project.
+- Associate a project with a video file.
+- Keep score data separate from the original video.
 
-### Video Generation
+### Video Generation and Scoreboard Overlay
 
-* Generate a new video containing the scoreboard.
-* Display the correct score based on the video timestamp.
-* Allow configuration of scoreboard position.
-* Preserve the original video's audio.
-* Produce a new video file rather than modifying the original.
-
-### Scoreboard Overlay
-
-* Display both team names together with their current scores.
-* Each team's name should appear next to its corresponding score.
-* The scoreboard should remain visible throughout the video.
-* The position of the scoreboard should be configurable.
-* The scoreboard should be readable without obscuring important parts of the video.
+- Generate a new video containing a scoreboard overlay.
+- Display both team names together with their current scores.
+- Display each team's name next to its corresponding score.
+- Update the displayed score based on the video timestamp.
+- Allow the scoreboard position to be configured.
+- Preserve the original video's audio.
+- Produce a new video file without modifying the original video.
+- Provide progress information while the video is being generated.
 
 ## Non-Functional Requirements
 
