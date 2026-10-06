@@ -1,0 +1,599 @@
+import json
+import os
+import sys
+
+from PySide6.QtCore import QUrl, Qt
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QSpinBox,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.video_file_path = ""
+        self.video_file_label = QLabel("No video loaded")
+
+        self.video_widget = QVideoWidget()
+        self.video_widget.setMinimumSize(800, 320)
+        self.play_button = QPushButton("Play")
+
+        self.position_label = QLabel("00:00.000 / 00:00.000")
+
+        self.position_slider = QSlider(Qt.Horizontal)
+        self.position_slider.setRange(0, 0)
+
+        self.rewind_button = QPushButton("-10 sec")
+        self.forward_button = QPushButton("+10 sec")
+
+        self.media_player = QMediaPlayer()
+        self.media_player.positionChanged.connect(self.position_changed)
+        self.media_player.durationChanged.connect(self.duration_changed)
+        self.media_player.playbackStateChanged.connect(self.playback_state_changed)
+
+        self.audio_output = QAudioOutput()
+        self.media_player.setAudioOutput(self.audio_output)
+
+        self.media_player.setVideoOutput(self.video_widget)
+
+        self.setWindowTitle("Volleyball Scoreboard")
+        
+        self.events = []
+        self.event_list = QListWidget()
+
+        self.team_a_score = 0
+        self.team_b_score = 0
+
+        self.team_a_name = QLineEdit("Team A")
+        self.team_b_name = QLineEdit("Team B")
+
+        self.team_a_starting_score = QSpinBox()
+        self.team_b_starting_score = QSpinBox()
+
+        self.team_a_starting_score.setRange(0, 99)
+        self.team_b_starting_score.setRange(0, 99)
+
+        self.team_a_label = QLabel("Team A: 0")
+        self.team_b_label = QLabel("Team B: 0")
+
+        self.open_video_button = QPushButton("Open Video")
+        self.team_a_button  = QPushButton("Team A + 1")
+        self.team_b_button  = QPushButton("Team B + 1")
+        self.undo_button = QPushButton("Undo Last Score")
+        self.delete_button = QPushButton("Delete Selected Event")
+        self.exit_button = QPushButton("Exit")
+        self.initialize_button = QPushButton("Start Game")
+        self.new_game_button = QPushButton("New Game")
+        self.save_button = QPushButton("Save Game")
+        self.load_button = QPushButton("Load Game")
+
+        self.new_game_button.clicked.connect(self.new_game)
+        self.initialize_button.clicked.connect(self.initialize_scores)
+
+        self.open_video_button.clicked.connect(self.open_video)    
+        self.play_button.clicked.connect(self.play_pause)
+        self.rewind_button.clicked.connect(self.rewind)
+        self.forward_button.clicked.connect(self.forward)
+        self.position_slider.sliderMoved.connect(self.seek)
+
+        self.team_a_name.textChanged.connect(self.update_score_labels)
+        self.team_b_name.textChanged.connect(self.update_score_labels)
+        self.team_a_name.textChanged.connect(self.update_team_buttons)
+        self.team_b_name.textChanged.connect(self.update_team_buttons)
+
+        self.team_a_button.clicked.connect(self.team_a_button_clicked)
+        self.team_b_button.clicked.connect(self.team_b_button_clicked)
+        self.undo_button.clicked.connect(self.undo_last_score)
+        self.delete_button.clicked.connect(self.delete_selected_event)
+        self.exit_button.clicked.connect(self.close)    
+        self.save_button.clicked.connect(self.save_game)
+        self.load_button.clicked.connect(self.load_game)
+        self.event_list.itemClicked.connect(self.event_selected)
+
+        # Main layout
+        main_layout = QHBoxLayout()
+
+        left_layout = QVBoxLayout()
+        right_layout = QVBoxLayout()
+
+        # -------------------------------------------------
+        # Video
+        # -------------------------------------------------
+
+        left_layout.addWidget(self.open_video_button)
+        left_layout.addWidget(self.video_file_label)
+        left_layout.addWidget(self.video_widget, 1)
+
+        # -------------------------------------------------
+        # Video controls
+        # -------------------------------------------------
+
+        video_controls_layout = QHBoxLayout()
+
+        video_controls_layout.addWidget(self.rewind_button)
+        video_controls_layout.addWidget(self.play_button)
+        video_controls_layout.addWidget(self.forward_button)
+
+        left_layout.addWidget(self.position_label)
+        left_layout.addWidget(self.position_slider)
+        left_layout.addLayout(video_controls_layout)
+
+        # -------------------------------------------------
+        # Game setup + current score
+        # -------------------------------------------------
+
+        game_layout = QHBoxLayout()
+
+        # Game setup
+        setup_layout = QGridLayout()
+
+        setup_layout.addWidget(QLabel("Game Setup"), 0, 0, 1, 2)
+
+        setup_layout.addWidget(QLabel("Team A:"), 1, 0)
+        setup_layout.addWidget(self.team_a_name, 1, 1, 1, 3)
+
+        setup_layout.addWidget(QLabel("Start:"), 2, 0)
+        setup_layout.addWidget(self.team_a_starting_score, 2, 1)
+
+        setup_layout.addWidget(QLabel("Team B:"), 3, 0)
+        setup_layout.addWidget(self.team_b_name, 3, 1, 1, 3)
+
+        setup_layout.addWidget(QLabel("Start:"), 4, 0)
+        setup_layout.addWidget(self.team_b_starting_score, 4, 1)
+
+        setup_layout.setColumnStretch(0, 0)
+        setup_layout.setColumnStretch(1, 1)
+        setup_layout.setColumnStretch(2, 0)
+        setup_layout.setColumnStretch(3, 0)
+
+        setup_layout.addWidget(self.initialize_button, 5, 0)
+        setup_layout.addWidget(self.new_game_button, 5, 1)
+        setup_layout.addWidget(self.save_button, 5, 2)
+        setup_layout.addWidget(self.load_button, 5, 3)
+
+        # Current score
+        score_layout = QVBoxLayout()
+
+        score_layout.addWidget(QLabel("Current Score"))
+
+        score_layout.addWidget(self.team_a_label)
+        score_layout.addWidget(self.team_a_button)
+
+        score_layout.addWidget(self.team_b_label)
+        score_layout.addWidget(self.team_b_button)
+
+        # Put the two vertical layouts side by side
+        game_layout.addLayout(setup_layout)
+        game_layout.addLayout(score_layout)
+        game_layout.setStretch(0, 1)
+        game_layout.setStretch(1, 1)
+
+        # Add the horizontal layout to the main vertical layout
+        left_layout.addLayout(game_layout)
+
+        # -------------------------------------------------
+        # Score events
+        # -------------------------------------------------
+
+        right_layout.addWidget(QLabel("Score Events"))
+        right_layout.addWidget(self.event_list)
+
+        # -------------------------------------------------
+        # Event editing buttons
+        # -------------------------------------------------
+
+        event_buttons_layout = QHBoxLayout()
+
+        event_buttons_layout.addWidget(self.undo_button)
+        event_buttons_layout.addWidget(self.delete_button)
+        event_buttons_layout.addWidget(self.exit_button)
+
+        right_layout.addLayout(event_buttons_layout)
+
+        main_layout.addLayout(left_layout, 4)
+        main_layout.addLayout(right_layout, 1)
+
+        # -------------------------------------------------
+        # Central widget
+        # -------------------------------------------------
+
+        central_widget = QWidget()
+        central_widget.setLayout(main_layout)
+
+        self.setCentralWidget(central_widget)
+
+    def event_selected(self, item):
+        row = self.event_list.row(item)
+        event = self.events[row]
+
+        self.media_player.setPosition(event["time"])
+
+    def update_score_labels(self):
+        self.team_a_label.setText(
+            f"{self.team_a_name.text()}: {self.team_a_score}"
+        )
+        self.team_b_label.setText(
+            f"{self.team_b_name.text()}: {self.team_b_score}"
+        )
+
+    def update_team_buttons(self):
+        self.team_a_button.setText(
+            f"{self.team_a_name.text()} + 1"
+        )
+        self.team_b_button.setText(
+            f"{self.team_b_name.text()} + 1"
+        )        
+
+    def reset_game_state(self):
+        self.events.clear()
+        self.event_list.clear()
+
+        self.team_a_score = self.team_a_starting_score.value()
+        self.team_b_score = self.team_b_starting_score.value()
+
+        self.update_score_labels()
+        self.update_team_buttons()
+
+    def initialize_scores(self):
+        self.reset_game_state()
+
+        self.team_a_name.setEnabled(False)
+        self.team_b_name.setEnabled(False)
+        self.team_a_starting_score.setEnabled(False)
+        self.team_b_starting_score.setEnabled(False)
+
+        self.initialize_button.setEnabled(False)
+
+    def new_game(self):
+        self.reset_game_state()
+
+        self.team_a_name.setEnabled(True)
+        self.team_b_name.setEnabled(True)
+        self.team_a_starting_score.setEnabled(True)
+        self.team_b_starting_score.setEnabled(True)
+
+        self.initialize_button.setEnabled(True)
+
+    def play_pause(self):
+        if self.media_player.isPlaying():
+            self.media_player.pause()
+        else:
+            self.media_player.play()
+
+    def rewind(self):
+        new_position = max(0, self.media_player.position() - 10000)
+        self.media_player.setPosition(new_position)
+
+    def forward(self):
+        new_position = self.media_player.position() + 10000
+        self.media_player.setPosition(new_position)
+
+    def position_changed(self, position):
+        self.position_slider.setValue(position)
+
+        self.position_label.setText(
+            f"{self.format_time(position)} / "
+            f"{self.format_time(self.media_player.duration())}"
+        )
+
+    def duration_changed(self, duration):
+        self.position_slider.setRange(0, duration)
+
+    def seek(self, position):
+        self.media_player.setPosition(position)
+
+    def playback_state_changed(self, state):
+        if state == QMediaPlayer.PlayingState:
+            self.play_button.setText("Pause")
+        else:
+            self.play_button.setText("Play")
+
+    def open_video(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Video",
+            "",
+            "Video Files (*.mp4 *.mov *.avi *.mkv)"
+        )
+
+        if not file_path:
+            return
+
+        # Determine whether this is the same video
+        same_video = False
+
+        if self.video_file_path:
+            current_path = os.path.normcase(
+                os.path.abspath(self.video_file_path)
+            )
+            new_path = os.path.normcase(
+                os.path.abspath(file_path)
+            )
+
+            same_video = current_path == new_path
+
+        if same_video:
+            return
+
+        if self.events:
+            result = QMessageBox.question(
+                self,
+                "Open New Video",
+                "Opening a new video will clear the current score events. "
+                "Do you want to continue?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+
+            if result != QMessageBox.Yes:
+                return
+
+        self.events.clear()
+        self.event_list.clear()
+
+        self.team_a_score = self.team_a_starting_score.value()
+        self.team_b_score = self.team_b_starting_score.value()
+
+        self.update_score_labels()
+        self.update_team_buttons()
+
+        self.video_file_path = file_path
+        self.video_file_label.setText(
+            f"Video: {os.path.basename(file_path)}"
+        )
+
+        self.media_player.setSource(
+            QUrl.fromLocalFile(file_path)
+        )
+        self.media_player.play()
+
+    def format_time(self, milliseconds):
+        total_seconds = milliseconds // 1000
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        millis = milliseconds % 1000
+
+        return f"{minutes:02d}:{seconds:02d}.{millis:03d}"
+    
+    def team_a_button_clicked(self):
+        self.team_a_score += 1
+        event = {
+            "time": self.media_player.position(),
+            "team": "A",
+            "score_a": self.team_a_score,
+            "score_b": self.team_b_score,
+        }
+        self.events.append(event)   
+        print(event)
+        time_text = self.format_time(event["time"])
+        team_name = (
+            self.team_a_name.text()
+            if event["team"] == "A"
+            else self.team_b_name.text()
+        )
+        self.event_list.addItem(
+            f"{time_text}    "
+            f"{event['score_a']} - {event['score_b']}    "
+            f"{team_name}"
+        )
+        last_item = self.event_list.item(self.event_list.count() - 1)
+        self.event_list.setCurrentItem(last_item)
+        self.event_list.scrollToItem(last_item)
+        self.update_score_labels()
+
+    def team_b_button_clicked(self):
+        self.team_b_score += 1
+        event = {
+            "time": self.media_player.position(),
+            "team": "B",
+            "score_a": self.team_a_score,
+            "score_b": self.team_b_score,
+        }
+        self.events.append(event)
+        print(event)
+        time_text = self.format_time(event["time"])
+        team_name = (
+            self.team_a_name.text()
+            if event["team"] == "A"
+            else self.team_b_name.text()
+        )
+        self.event_list.addItem(
+            f"{time_text}    "
+            f"{event['score_a']} - {event['score_b']}    "
+            f"{team_name}"
+        )
+        last_item = self.event_list.item(self.event_list.count() - 1)
+        self.event_list.setCurrentItem(last_item)
+        self.event_list.scrollToItem(last_item)
+        self.update_score_labels()
+
+    def undo_last_score(self):
+        if not self.events:
+            return
+
+        self.events.pop()
+
+        self.recalculate_scores()
+        self.refresh_event_list()
+
+        if self.events:
+            last_event = self.events[-1]
+
+            self.team_a_score = last_event["score_a"]
+            self.team_b_score = last_event["score_b"]
+        else:
+            self.team_a_score = 0
+            self.team_b_score = 0
+
+        self.update_score_labels()
+        self.update_team_buttons()
+        
+    def delete_selected_event(self):
+        selected_row = self.event_list.currentRow()
+
+        if selected_row < 0:
+            return
+
+        self.events.pop(selected_row)
+
+        self.recalculate_scores()
+        self.refresh_event_list()
+
+        if self.events:
+            last_event = self.events[-1]
+
+            self.team_a_score = last_event["score_a"]
+            self.team_b_score = last_event["score_b"]
+        else:
+            self.team_a_score = 0
+            self.team_b_score = 0
+
+        self.update_score_labels()
+        self.update_team_buttons()
+
+    def recalculate_scores(self):
+        score_a = self.team_a_starting_score.value()
+        score_b = self.team_b_starting_score.value()
+
+        for event in self.events:
+            if event["team"] == "A":
+                score_a += 1
+            else:
+                score_b += 1
+
+            event["score_a"] = score_a
+            event["score_b"] = score_b
+
+    def refresh_event_list(self):
+        self.event_list.clear()
+
+        for event in self.events:
+            time_text = self.format_time(event["time"])
+            team_name = (
+                self.team_a_name.text()
+                if event["team"] == "A"
+                else self.team_b_name.text()
+            )
+
+            self.event_list.addItem(
+                f"{time_text}    "
+                f"{event['score_a']} - {event['score_b']}    "
+                f"{team_name}"
+            )
+
+        last_item = self.event_list.item(self.event_list.count() - 1)
+        self.event_list.setCurrentItem(last_item)
+        self.event_list.scrollToItem(last_item)
+
+    def save_game(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Game",
+            "",
+            "Game Files (*.json)"
+        )
+
+        if not file_path:
+            return
+
+        game_data = {
+            "video_file": self.video_file_path,
+            "team_a_name": self.team_a_name.text(),
+            "team_b_name": self.team_b_name.text(),
+            "starting_score_a": self.team_a_starting_score.value(),
+            "starting_score_b": self.team_b_starting_score.value(),
+            "events": self.events,
+        }
+
+        with open(file_path, "w", encoding="utf-8") as file:
+            json.dump(game_data, file, indent=4)
+
+    def load_game(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Game",
+            "",
+            "Game Files (*.json)"
+        )
+
+        if not file_path:
+            return
+
+        with open(file_path, "r", encoding="utf-8") as file:
+            game_data = json.load(file)
+
+        self.video_file_path = game_data["video_file"]
+        self.video_file_label.setText(
+            f"Video: {os.path.basename(self.video_file_path)}"
+        )
+
+        self.team_a_name.setText(game_data["team_a_name"])
+        self.team_b_name.setText(game_data["team_b_name"])
+
+        self.team_a_starting_score.setValue(
+            game_data["starting_score_a"]
+        )
+        self.team_b_starting_score.setValue(
+            game_data["starting_score_b"]
+        )
+
+        self.events = game_data["events"]
+
+        self.recalculate_scores()
+        self.refresh_event_list()
+
+        if self.events:
+            last_event = self.events[-1]
+            self.team_a_score = last_event["score_a"]
+            self.team_b_score = last_event["score_b"]
+        else:
+            self.team_a_score = self.team_a_starting_score.value()
+            self.team_b_score = self.team_b_starting_score.value()
+
+        self.update_score_labels()
+        self.update_team_buttons()
+
+        self.team_a_name.setEnabled(False)
+        self.team_b_name.setEnabled(False)
+        self.team_a_starting_score.setEnabled(False)
+        self.team_b_starting_score.setEnabled(False)
+
+        self.initialize_button.setEnabled(False)
+
+        if os.path.exists(self.video_file_path):
+            self.media_player.setSource(
+                QUrl.fromLocalFile(self.video_file_path)
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "Video Not Found",
+                f"The video file could not be found:\n\n"
+                f"{self.video_file_path}"
+            )
+
+
+
+app = QApplication(sys.argv)
+
+window = MainWindow()
+window.resize(1200, 800)
+window.show()
+
+sys.exit(app.exec())
