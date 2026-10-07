@@ -66,6 +66,14 @@ class MainWindow(QMainWindow):
         self.team_a_starting_score = QSpinBox()
         self.team_b_starting_score = QSpinBox()
 
+        self.team_a_sets_won = QSpinBox()
+        self.team_a_sets_won.setRange(0, 9)
+        self.team_a_sets_won.setValue(0)
+
+        self.team_b_sets_won = QSpinBox()
+        self.team_b_sets_won.setRange(0, 9)
+        self.team_b_sets_won.setValue(0)
+
         self.team_a_starting_score.setRange(0, 99)
         self.team_b_starting_score.setRange(0, 99)
 
@@ -145,7 +153,7 @@ class MainWindow(QMainWindow):
         # Game setup
         setup_layout = QGridLayout()
 
-        setup_layout.addWidget(QLabel("Game Setup"), 0, 0, 1, 2)
+        setup_layout.addWidget(QLabel("Game Setup"), 0, 0, 1, 4)
 
         setup_layout.addWidget(QLabel("Team A:"), 1, 0)
         setup_layout.addWidget(self.team_a_name, 1, 1, 1, 3)
@@ -153,11 +161,17 @@ class MainWindow(QMainWindow):
         setup_layout.addWidget(QLabel("Start:"), 2, 0)
         setup_layout.addWidget(self.team_a_starting_score, 2, 1)
 
+        setup_layout.addWidget(QLabel("Sets Won:"), 2, 2)
+        setup_layout.addWidget(self.team_a_sets_won, 2, 3)
+
         setup_layout.addWidget(QLabel("Team B:"), 3, 0)
         setup_layout.addWidget(self.team_b_name, 3, 1, 1, 3)
 
         setup_layout.addWidget(QLabel("Start:"), 4, 0)
         setup_layout.addWidget(self.team_b_starting_score, 4, 1)
+
+        setup_layout.addWidget(QLabel("Sets Won:"), 4, 2)
+        setup_layout.addWidget(self.team_b_sets_won, 4, 3)
 
         setup_layout.setColumnStretch(0, 0)
         setup_layout.setColumnStretch(1, 1)
@@ -529,6 +543,8 @@ class MainWindow(QMainWindow):
             "video_file": self.video_file_path,
             "team_a_name": self.team_a_name.text(),
             "team_b_name": self.team_b_name.text(),
+            "team_a_sets_won": self.team_a_sets_won.value(),
+            "team_b_sets_won": self.team_b_sets_won.value(),
             "starting_score_a": self.team_a_starting_score.value(),
             "starting_score_b": self.team_b_starting_score.value(),
             "events": self.events,
@@ -558,6 +574,9 @@ class MainWindow(QMainWindow):
 
         self.team_a_name.setText(game_data["team_a_name"])
         self.team_b_name.setText(game_data["team_b_name"])
+
+        self.team_a_sets_won.setValue(game_data.get("team_a_sets_won", 0))
+        self.team_b_sets_won.setValue(game_data.get("team_b_sets_won", 0))
 
         self.team_a_starting_score.setValue(
             game_data["starting_score_a"]
