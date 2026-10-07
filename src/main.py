@@ -92,6 +92,8 @@ class MainWindow(QMainWindow):
         self.forward_button.clicked.connect(self.forward)
         self.position_slider.sliderMoved.connect(self.seek)
 
+        self.team_a_starting_score.valueChanged.connect(self.update_starting_score_labels)
+        self.team_b_starting_score.valueChanged.connect(self.update_starting_score_labels)
         self.team_a_name.textChanged.connect(self.update_score_labels)
         self.team_b_name.textChanged.connect(self.update_score_labels)
         self.team_a_name.textChanged.connect(self.update_team_buttons)
@@ -223,6 +225,11 @@ class MainWindow(QMainWindow):
         event = self.events[row]
 
         self.media_player.setPosition(event["time"])
+
+    def update_starting_score_labels(self):
+        self.team_a_score = self.team_a_starting_score.value()
+        self.team_b_score = self.team_b_starting_score.value()
+        self.update_score_labels()
 
     def update_score_labels(self):
         self.team_a_label.setText(
@@ -370,8 +377,26 @@ class MainWindow(QMainWindow):
         millis = milliseconds % 1000
 
         return f"{minutes:02d}:{seconds:02d}.{millis:03d}"
-    
+
+    def add_starting_event(self):
+        if self.events:
+            return
+
+        self.team_a_score = self.team_a_starting_score.value()
+        self.team_b_score = self.team_b_starting_score.value()
+
+        event = {
+            "time": 0,
+            "team": "START",
+            "score_a": self.team_a_starting_score.value(),
+            "score_b": self.team_b_starting_score.value(),
+        }
+
+        self.events.append(event)
+
     def team_a_button_clicked(self):
+        self.add_starting_event()
+
         self.team_a_score += 1
         event = {
             "time": self.media_player.position(),
@@ -379,25 +404,14 @@ class MainWindow(QMainWindow):
             "score_a": self.team_a_score,
             "score_b": self.team_b_score,
         }
-        self.events.append(event)   
-        print(event)
-        time_text = self.format_time(event["time"])
-        team_name = (
-            self.team_a_name.text()
-            if event["team"] == "A"
-            else self.team_b_name.text()
-        )
-        self.event_list.addItem(
-            f"{time_text}    "
-            f"{event['score_a']} - {event['score_b']}    "
-            f"{team_name}"
-        )
-        last_item = self.event_list.item(self.event_list.count() - 1)
-        self.event_list.setCurrentItem(last_item)
-        self.event_list.scrollToItem(last_item)
+        self.events.append(event)
+
         self.update_score_labels()
+        self.refresh_event_list()
 
     def team_b_button_clicked(self):
+        self.add_starting_event()
+
         self.team_b_score += 1
         event = {
             "time": self.media_player.position(),
@@ -406,25 +420,15 @@ class MainWindow(QMainWindow):
             "score_b": self.team_b_score,
         }
         self.events.append(event)
-        print(event)
-        time_text = self.format_time(event["time"])
-        team_name = (
-            self.team_a_name.text()
-            if event["team"] == "A"
-            else self.team_b_name.text()
-        )
-        self.event_list.addItem(
-            f"{time_text}    "
-            f"{event['score_a']} - {event['score_b']}    "
-            f"{team_name}"
-        )
-        last_item = self.event_list.item(self.event_list.count() - 1)
-        self.event_list.setCurrentItem(last_item)
-        self.event_list.scrollToItem(last_item)
+
         self.update_score_labels()
+        self.refresh_event_list()
 
     def undo_last_score(self):
         if not self.events:
+            return
+
+        if self.events[-1]["team"] == "START":
             return
 
         self.events.pop()
@@ -450,6 +454,9 @@ class MainWindow(QMainWindow):
         if selected_row < 0:
             return
 
+        if self.events[selected_row]["team"] == "START":
+            return
+
         self.events.pop(selected_row)
 
         self.recalculate_scores()
@@ -472,9 +479,13 @@ class MainWindow(QMainWindow):
         score_b = self.team_b_starting_score.value()
 
         for event in self.events:
-            if event["team"] == "A":
+            if event["team"] == "START":
+                pass
+
+            elif event["team"] == "A":
                 score_a += 1
-            else:
+
+            elif event["team"] == "B":
                 score_b += 1
 
             event["score_a"] = score_a
@@ -485,11 +496,13 @@ class MainWindow(QMainWindow):
 
         for event in self.events:
             time_text = self.format_time(event["time"])
-            team_name = (
-                self.team_a_name.text()
-                if event["team"] == "A"
-                else self.team_b_name.text()
-            )
+
+            if event["team"] == "START":
+                team_name = "Starting Score"
+            elif event["team"] == "A":
+                team_name = self.team_a_name.text()
+            else:
+                team_name = self.team_b_name.text()
 
             self.event_list.addItem(
                 f"{time_text}    "
@@ -588,6 +601,39 @@ class MainWindow(QMainWindow):
                 f"{self.video_file_path}"
             )
 
+    def build_score_timeline(self):
+        timeline = []
+
+        current_time = 0
+        current_score_a = self.team_a_starting_score.value()
+        current_score_b = self.team_b_starting_score.value()
+
+        for event in self.events:
+            if event["team"] == "START":
+                current_score_a = event["score_a"]
+                current_score_b = event["score_b"]
+                continue
+
+            timeline.append({
+                "start_time": current_time,
+                "end_time": event["time"],
+                "score_a": current_score_a,
+                "score_b": current_score_b,
+            })
+
+            current_time = event["time"]
+            current_score_a = event["score_a"]
+            current_score_b = event["score_b"]
+
+        # Last score continues until the end of the video
+        timeline.append({
+            "start_time": current_time,
+            "end_time": self.media_player.duration(),
+            "score_a": current_score_a,
+            "score_b": current_score_b,
+        })
+
+        return timeline
 
 
 app = QApplication(sys.argv)
