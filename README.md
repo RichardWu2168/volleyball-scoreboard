@@ -24,6 +24,10 @@ The application should allow a user to:
 8. Generate a new video with the current score displayed on the screen.
 9. Preserve the original video file without modification.
 
+## Application
+
+![Volleyball Scoreboard](screenshots/scoreboard.png)
+
 ## Basic Workflow
 
 ### 1. Open Video
@@ -181,4 +185,12 @@ The initial implementation is planned to use:
 - **FFmpeg** — video processing and score overlay
 - **JSON or SQLite** — project and score data storage
 
-The technology choices may evolve as the project develops.
+## Sample Game Data
+
+A sample game file is provided in `examples/sample_game.json`.
+
+The file contains the team information, starting score, set scores, and
+timestamped scoring events used to generate the scoreboard overlay.
+
+
+### The technology choices may evolve as the project develops.
