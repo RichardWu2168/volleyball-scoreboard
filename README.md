@@ -28,6 +28,12 @@ The application is designed to allow a user to:
 
 ![Volleyball Scoreboard](screenshots/scoreboard.png)
 
+## Scoreboard Overlay
+
+Example of a generated volleyball video with the score displayed on the video.
+
+![Example of scored video](screenshots/scored-video.png)
+
 ## Basic Workflow
 
 ### 1. Open Video
@@ -196,9 +202,10 @@ volleyball-scoreboard/
 ├── src/
 │   └── main.py
 ├── screenshots/
-│   └── scoreboard.png
+│   └── scoreboard.png       # Main application screenshot
+│   └── scored-video.png     # Example of the scoreboard overlaid on a video
 ├── examples/
-│   └── sample_game.json
+│   └── sample_game.json     # Sample game file 
 ├── README.md
 └── ...
 ```
