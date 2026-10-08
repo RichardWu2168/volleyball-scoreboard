@@ -58,6 +58,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Volleyball Scoreboard")
         
         self.events = []
+        self.added_event_history = []
         self.event_list = QListWidget()
 
         self.team_a_score = 0
@@ -68,6 +69,11 @@ class MainWindow(QMainWindow):
 
         self.team_a_starting_score = QSpinBox()
         self.team_b_starting_score = QSpinBox()
+
+        self.team_a_sets_won_label = QLabel("Sets Won:")
+        self.team_b_sets_won_label = QLabel("Sets Won:")
+        self.team_a_sets_won_label.setAlignment(Qt.AlignCenter)
+        self.team_b_sets_won_label.setAlignment(Qt.AlignCenter)
 
         self.team_a_sets_won = QSpinBox()
         self.team_a_sets_won.setRange(0, 9)
@@ -179,7 +185,7 @@ class MainWindow(QMainWindow):
         setup_layout.addWidget(QLabel("Start:"), 2, 0)
         setup_layout.addWidget(self.team_a_starting_score, 2, 1)
 
-        setup_layout.addWidget(QLabel("Sets Won:"), 2, 2)
+        setup_layout.addWidget(self.team_a_sets_won_label, 2, 2)
         setup_layout.addWidget(self.team_a_sets_won, 2, 3)
 
         setup_layout.addWidget(QLabel("Team B:"), 3, 0)
@@ -188,13 +194,8 @@ class MainWindow(QMainWindow):
         setup_layout.addWidget(QLabel("Start:"), 4, 0)
         setup_layout.addWidget(self.team_b_starting_score, 4, 1)
 
-        setup_layout.addWidget(QLabel("Sets Won:"), 4, 2)
+        setup_layout.addWidget(self.team_b_sets_won_label, 4, 2)
         setup_layout.addWidget(self.team_b_sets_won, 4, 3)
-
-        setup_layout.setColumnStretch(0, 0)
-        setup_layout.setColumnStretch(1, 1)
-        setup_layout.setColumnStretch(2, 0)
-        setup_layout.setColumnStretch(3, 0)
 
         setup_layout.addWidget(self.initialize_button, 5, 0)
         setup_layout.addWidget(self.new_game_button, 5, 1)
@@ -271,6 +272,12 @@ class MainWindow(QMainWindow):
 
         self.media_player.setPosition(event["time"])
 
+        self.team_a_score = event["score_a"]
+        self.team_b_score = event["score_b"]
+
+        self.update_score_labels()
+        # self.update_team_buttons()
+
     def update_starting_score_labels(self):
         self.team_a_score = self.team_a_starting_score.value()
         self.team_b_score = self.team_b_starting_score.value()
@@ -300,6 +307,7 @@ class MainWindow(QMainWindow):
 
     def reset_game_state(self):
         self.events.clear()
+        self.added_event_history.clear()
         self.event_list.clear()
 
         self.team_a_score = self.team_a_starting_score.value()
@@ -403,6 +411,7 @@ class MainWindow(QMainWindow):
                 return
 
         self.events.clear()
+        self.added_event_history.clear()
         self.event_list.clear()
 
         self.team_a_score = self.team_a_starting_score.value()
@@ -456,9 +465,16 @@ class MainWindow(QMainWindow):
             "score_b": self.team_b_score,
         }
         self.events.append(event)
+        self.added_event_history.append(event)
+
+        self.events.sort(key=lambda event: event["time"])
+        self.recalculate_scores()
+
+        self.team_a_score = event["score_a"]
+        self.team_b_score = event["score_b"]
 
         self.update_score_labels()
-        self.refresh_event_list()
+        self.refresh_event_list(event)
 
     def team_b_button_clicked(self):
         self.add_starting_event()
@@ -471,18 +487,28 @@ class MainWindow(QMainWindow):
             "score_b": self.team_b_score,
         }
         self.events.append(event)
+        self.added_event_history.append(event)
+
+        self.events.sort(key=lambda event: event["time"])
+        self.recalculate_scores()
+
+        self.team_a_score = event["score_a"]
+        self.team_b_score = event["score_b"]
 
         self.update_score_labels()
-        self.refresh_event_list()
+        self.refresh_event_list(event)
 
     def undo_last_score(self):
-        if not self.events:
+        if not self.added_event_history:
             return
 
-        if self.events[-1]["team"] == "START":
+        if self.added_event_history[-1]["team"] == "START":
             return
 
-        self.events.pop()
+        event = self.added_event_history.pop()
+
+        if event in self.events:
+            self.events.remove(event)
 
         self.recalculate_scores()
         self.refresh_event_list()
@@ -497,7 +523,7 @@ class MainWindow(QMainWindow):
             self.team_b_score = 0
 
         self.update_score_labels()
-        self.update_team_buttons()
+        # self.update_team_buttons()
         
     def delete_selected_event(self):
         selected_row = self.event_list.currentRow()
@@ -523,7 +549,7 @@ class MainWindow(QMainWindow):
             self.team_b_score = 0
 
         self.update_score_labels()
-        self.update_team_buttons()
+        # self.update_team_buttons()
 
     def recalculate_scores(self):
         score_a = self.team_a_starting_score.value()
@@ -542,7 +568,7 @@ class MainWindow(QMainWindow):
             event["score_a"] = score_a
             event["score_b"] = score_b
 
-    def refresh_event_list(self):
+    def refresh_event_list(self, selected_event=None):
         self.event_list.clear()
 
         for event in self.events:
@@ -561,9 +587,17 @@ class MainWindow(QMainWindow):
                 f"{team_name}"
             )
 
-        last_item = self.event_list.item(self.event_list.count() - 1)
-        self.event_list.setCurrentItem(last_item)
-        self.event_list.scrollToItem(last_item)
+        if selected_event is not None:
+            for row, event in enumerate(self.events):
+                if event is selected_event:
+                    item = self.event_list.item(row)
+                    self.event_list.setCurrentItem(item)
+                    self.event_list.scrollToItem(item)
+                    break
+
+        # last_item = self.event_list.item(self.event_list.count() - 1)
+        # self.event_list.setCurrentItem(last_item)
+        # self.event_list.scrollToItem(last_item)
 
     def save_game(self):
         file_path, _ = QFileDialog.getSaveFileName(
