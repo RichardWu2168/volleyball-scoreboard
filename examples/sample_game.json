@@ -1,0 +1,35 @@
+{
+    "video_file": "sample_game.mp4",
+    "team_a_name": "Team A",
+    "team_b_name": "Team B",
+    "team_a_sets_won": 1,
+    "team_b_sets_won": 0,
+    "starting_score_a": 0,
+    "starting_score_b": 0,
+    "events": [
+        {
+            "time": 0,
+            "team": "START",
+            "score_a": 0,
+            "score_b": 0
+        },
+        {
+            "time": 12350,
+            "team": "A",
+            "score_a": 1,
+            "score_b": 0
+        },
+        {
+            "time": 18720,
+            "team": "B",
+            "score_a": 1,
+            "score_b": 1
+        },
+        {
+            "time": 31450,
+            "team": "A",
+            "score_a": 2,
+            "score_b": 1
+        }
+    ]
+}
