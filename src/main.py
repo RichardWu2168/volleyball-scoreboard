@@ -1,6 +1,10 @@
 import json
 import os
+import subprocess
 import sys
+
+from pathlib import Path
+from warnings import filters
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -17,7 +21,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSlider,
-    QSpinBox,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -77,8 +80,21 @@ class MainWindow(QMainWindow):
         self.team_a_starting_score.setRange(0, 99)
         self.team_b_starting_score.setRange(0, 99)
 
-        self.team_a_label = QLabel("Team A: 0")
-        self.team_b_label = QLabel("Team B: 0")
+        self.team_a_label = QLabel("Team A")
+        self.team_b_label = QLabel("Team B")
+        self.team_a_label.setAlignment(Qt.AlignCenter)
+        self.team_b_label.setAlignment(Qt.AlignCenter)
+
+        self.team_a_score_label = QLabel("0")
+        self.team_b_score_label = QLabel("0")
+        self.team_a_score_label.setAlignment(Qt.AlignCenter)
+        self.team_b_score_label.setAlignment(Qt.AlignCenter)
+        self.team_a_score_label.setStyleSheet(
+            "font-size: 40pt; font-weight: bold;"
+        )
+        self.team_b_score_label.setStyleSheet(
+            "font-size: 40pt; font-weight: bold;"
+        )
 
         self.open_video_button = QPushButton("Open Video")
         self.team_a_button  = QPushButton("Team A + 1")
@@ -90,8 +106,8 @@ class MainWindow(QMainWindow):
         self.new_game_button = QPushButton("New Game")
         self.save_button = QPushButton("Save Game")
         self.load_button = QPushButton("Load Game")
+        self.generate_video_button = QPushButton("Generate Video")
 
-        self.new_game_button.clicked.connect(self.new_game)
         self.initialize_button.clicked.connect(self.initialize_scores)
 
         self.open_video_button.clicked.connect(self.open_video)    
@@ -112,8 +128,10 @@ class MainWindow(QMainWindow):
         self.undo_button.clicked.connect(self.undo_last_score)
         self.delete_button.clicked.connect(self.delete_selected_event)
         self.exit_button.clicked.connect(self.close)    
+        self.new_game_button.clicked.connect(self.new_game)
         self.save_button.clicked.connect(self.save_game)
         self.load_button.clicked.connect(self.load_game)
+        self.generate_video_button.clicked.connect(self.generate_video)
         self.event_list.itemClicked.connect(self.event_selected)
 
         # Main layout
@@ -183,16 +201,29 @@ class MainWindow(QMainWindow):
         setup_layout.addWidget(self.save_button, 5, 2)
         setup_layout.addWidget(self.load_button, 5, 3)
 
-        # Current score
-        score_layout = QVBoxLayout()
+        # Current score layout
+        score_layout = QGridLayout()
 
-        score_layout.addWidget(QLabel("Current Score"))
+        # Current scores
+        score_layout.addWidget(QLabel("Current Score"), 0, 0, 1, 4)
 
-        score_layout.addWidget(self.team_a_label)
-        score_layout.addWidget(self.team_a_button)
+        # Team A
+        score_layout.addWidget(self.team_a_label, 1, 0, 1, 2)
+        score_layout.addWidget(self.team_a_score_label, 2, 0, 1, 2)
+        score_layout.addWidget(self.team_a_button, 3, 0, 1, 2)
 
-        score_layout.addWidget(self.team_b_label)
-        score_layout.addWidget(self.team_b_button)
+        # Team B
+        score_layout.addWidget(self.team_b_label, 1, 2, 1, 2)
+        score_layout.addWidget(self.team_b_score_label, 2, 2, 1, 2)
+        score_layout.addWidget(self.team_b_button, 3, 2, 1, 2)
+
+        # Generate Video
+        score_layout.addWidget(self.generate_video_button, 4, 0, 1, 4)
+
+        # Make the four columns fill the available width
+        for column in range(4):
+            score_layout.setColumnStretch(column, 1)
+
 
         # Put the two vertical layouts side by side
         game_layout.addLayout(setup_layout)
@@ -246,14 +277,20 @@ class MainWindow(QMainWindow):
         self.update_score_labels()
 
     def update_score_labels(self):
-        self.team_a_label.setText(
-            f"{self.team_a_name.text()}: {self.team_a_score}"
+        self.team_a_score_label.setText(
+            f"{self.team_a_score}"
         )
-        self.team_b_label.setText(
-            f"{self.team_b_name.text()}: {self.team_b_score}"
+        self.team_b_score_label.setText(
+            f"<span style='font-size: 40pt; font-weight: bold;'>{self.team_b_score}</span>"
         )
 
     def update_team_buttons(self):
+        self.team_a_label.setText(
+            f"{self.team_a_name.text()}"
+        )
+        self.team_b_label.setText(
+            f"{self.team_b_name.text()}"
+        )        
         self.team_a_button.setText(
             f"{self.team_a_name.text()} + 1"
         )
@@ -654,7 +691,148 @@ class MainWindow(QMainWindow):
 
         return timeline
 
+    def build_ffmpeg_filter(self, timeline):
+        filters = []
 
+        team_a_name = self.team_a_name.text()
+        team_b_name = self.team_b_name.text()
+
+        sets_a = self.team_a_sets_won.value()
+        sets_b = self.team_b_sets_won.value()
+
+        for i, period in enumerate(timeline):
+            text = (
+                f"{sets_a}  {team_a_name}    "
+                f"{period['score_a']} - {period['score_b']}    "
+                f"{team_b_name}  {sets_b}"
+            )
+
+            start = period["start_time"] / 1000
+
+            if i == len(timeline) - 1:
+                enable = f"gte(t,{start:.3f})"
+            else:
+                end = period["end_time"] / 1000
+                enable = f"gte(t,{start:.3f})*lt(t,{end:.3f})"
+
+            filters.append(
+                "drawtext="
+                f"text='{text}':"
+                "fontcolor=white:"
+                "fontsize=72:"
+                "box=1:"
+                "boxcolor=black@0.6:"
+                "boxborderw=20:"
+                "x=(w-text_w)/2:"
+                "y=h-text_h-30:"
+                f"enable='{enable}'"
+            )
+
+        return ",".join(filters)
+
+    def generate_video(self):
+        if not self.video_file_path:
+            QMessageBox.warning(
+                self,
+                "No Video",
+                "Please load a video first."
+            )
+            return
+
+        if not os.path.exists(self.video_file_path):
+            QMessageBox.warning(
+                self,
+                "Video Not Found",
+                f"The video file could not be found:\n\n"
+                f"{self.video_file_path}"
+            )
+            return
+
+        if not self.events:
+            QMessageBox.warning(
+                self,
+                "No Score Events",
+                "There are no score events to generate."
+            )
+            return
+
+        output_file, _ = QFileDialog.getSaveFileName(
+            self,
+            "Generate Video",
+            "",
+            "MP4 Video (*.mp4)"
+        )
+
+        if not output_file:
+            return
+
+        # Build the score timeline from the recorded events.
+        timeline = self.build_score_timeline()
+
+        if not timeline:
+            QMessageBox.warning(
+                self,
+                "No Timeline",
+                "There is no score timeline to generate."
+            )
+            return
+
+        # Build the FFmpeg drawtext filter.
+        ffmpeg_filter = self.build_ffmpeg_filter(timeline)
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            self.video_file_path,
+            "-vf",
+            ffmpeg_filter,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-c:a",
+            "copy",
+            output_file
+        ]
+
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                QMessageBox.critical(
+                    self,
+                    "FFmpeg Error",
+                    result.stderr[-3000:]
+                )
+                return
+
+            QMessageBox.information(
+                self,
+                "Video Generated",
+                f"Video generated successfully:\n\n{output_file}"
+            )
+
+        except FileNotFoundError:
+            QMessageBox.critical(
+                self,
+                "FFmpeg Not Found",
+                "FFmpeg could not be found. "
+                "Please make sure FFmpeg is installed and available in PATH."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to generate video:\n\n{e}"
+            )
 app = QApplication(sys.argv)
 
 window = MainWindow()
