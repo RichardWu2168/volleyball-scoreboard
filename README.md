@@ -205,7 +205,7 @@ volleyball-scoreboard/
 
 ## Sample Game Data
 
-A sample game file is provided in `examples/sample_game.json`.
+A sample game file is provided in [`examples/sample_game.json`](examples/sample_game.json).
 
 The file contains the team information, starting score, set scores, and timestamped scoring events used to generate the scoreboard overlay.
 
