@@ -552,11 +552,13 @@ class MainWindow(QMainWindow):
         if not self.added_event_history:
             return
 
-        event = self.added_event_history.pop()
+        event = self.added_event_history[-1]
 
         if event not in self.events:
+            self.added_event_history.pop()
             return
 
+        self.added_event_history.pop()
         self.events.remove(event)
 
         self.recalculate_scores()
@@ -696,10 +698,6 @@ class MainWindow(QMainWindow):
                     self.event_list.setCurrentItem(item)
                     self.event_list.scrollToItem(item)
                     break
-
-        # last_item = self.event_list.item(self.event_list.count() - 1)
-        # self.event_list.setCurrentItem(last_item)
-        # self.event_list.scrollToItem(last_item)
 
     def save_game(self):
         file_path, _ = QFileDialog.getSaveFileName(
