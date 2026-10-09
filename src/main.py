@@ -90,16 +90,22 @@ class MainWindow(QMainWindow):
         self.team_b_label = QLabel("Team B")
         self.team_a_label.setAlignment(Qt.AlignCenter)
         self.team_b_label.setAlignment(Qt.AlignCenter)
+        self.team_a_label.setStyleSheet(
+            "font-size: 12pt; font-weight: bold;"
+        )
+        self.team_b_label.setStyleSheet(
+            "font-size: 12pt; font-weight: bold;"
+        )
 
         self.team_a_score_label = QLabel("0")
         self.team_b_score_label = QLabel("0")
         self.team_a_score_label.setAlignment(Qt.AlignCenter)
         self.team_b_score_label.setAlignment(Qt.AlignCenter)
         self.team_a_score_label.setStyleSheet(
-            "font-size: 40pt; font-weight: bold;"
+            "font-size: 48pt; font-weight: bold;"
         )
         self.team_b_score_label.setStyleSheet(
-            "font-size: 40pt; font-weight: bold;"
+            "font-size: 48pt; font-weight: bold;"
         )
 
         self.open_video_button = QPushButton("Open Video")
@@ -107,6 +113,7 @@ class MainWindow(QMainWindow):
         self.team_b_button  = QPushButton("Team B + 1")
         self.undo_button = QPushButton("Undo Last Score")
         self.delete_button = QPushButton("Delete Selected Event")
+        self.edit_event_time_button = QPushButton("Edit Event Time")
         self.exit_button = QPushButton("Exit")
         self.initialize_button = QPushButton("Start Game")
         self.new_game_button = QPushButton("New Game")
@@ -121,6 +128,7 @@ class MainWindow(QMainWindow):
         self.rewind_button.clicked.connect(self.rewind)
         self.forward_button.clicked.connect(self.forward)
         self.position_slider.sliderMoved.connect(self.seek)
+        self.position_slider.sliderPressed.connect(self.seek_from_slider)
 
         self.team_a_starting_score.valueChanged.connect(self.update_starting_score_labels)
         self.team_b_starting_score.valueChanged.connect(self.update_starting_score_labels)
@@ -133,7 +141,8 @@ class MainWindow(QMainWindow):
         self.team_b_button.clicked.connect(self.team_b_button_clicked)
         self.undo_button.clicked.connect(self.undo_last_score)
         self.delete_button.clicked.connect(self.delete_selected_event)
-        self.exit_button.clicked.connect(self.close)    
+        self.edit_event_time_button.clicked.connect(self.edit_selected_event_time)
+        self.exit_button.clicked.connect(self.close)
         self.new_game_button.clicked.connect(self.new_game)
         self.save_button.clicked.connect(self.save_game)
         self.load_button.clicked.connect(self.load_game)
@@ -218,13 +227,9 @@ class MainWindow(QMainWindow):
         score_layout.addWidget(self.team_b_score_label, 2, 2, 1, 2)
         score_layout.addWidget(self.team_b_button, 3, 2, 1, 2)
 
-        # Generate Video
-        score_layout.addWidget(self.generate_video_button, 4, 0, 1, 4)
-
         # Make the four columns fill the available width
         for column in range(4):
             score_layout.setColumnStretch(column, 1)
-
 
         # Put the two vertical layouts side by side
         game_layout.addLayout(setup_layout)
@@ -250,9 +255,15 @@ class MainWindow(QMainWindow):
 
         event_buttons_layout.addWidget(self.undo_button)
         event_buttons_layout.addWidget(self.delete_button)
-        event_buttons_layout.addWidget(self.exit_button)
+        event_buttons_layout.addWidget(self.edit_event_time_button)
 
         right_layout.addLayout(event_buttons_layout)
+
+        # Exit button
+        right_layout.addWidget(self.exit_button)
+
+        # Generate Video button
+        right_layout.addWidget(self.generate_video_button)
 
         main_layout.addLayout(left_layout, 4)
         main_layout.addLayout(right_layout, 1)
@@ -288,7 +299,7 @@ class MainWindow(QMainWindow):
             f"{self.team_a_score}"
         )
         self.team_b_score_label.setText(
-            f"<span style='font-size: 40pt; font-weight: bold;'>{self.team_b_score}</span>"
+            f"{self.team_b_score}"
         )
 
     def update_team_buttons(self):
@@ -358,11 +369,28 @@ class MainWindow(QMainWindow):
             f"{self.format_time(self.media_player.duration())}"
         )
 
+        # Update the score based on the current video position.
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(position)
+        )
+
+        self.update_score_labels()
+
     def duration_changed(self, duration):
         self.position_slider.setRange(0, duration)
 
     def seek(self, position):
         self.media_player.setPosition(position)
+
+    def seek_from_slider(self):
+        position = self.position_slider.value()
+        self.media_player.setPosition(position)
+
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(position)
+        )
+
+        self.update_score_labels()
 
     def playback_state_changed(self, state):
         if state == QMediaPlayer.PlayingState:
@@ -457,21 +485,32 @@ class MainWindow(QMainWindow):
     def team_a_button_clicked(self):
         self.add_starting_event()
 
+        current_time = self.media_player.position()
+
+        # Calculate the score at the current video timestamp.
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(current_time)
+        )
+
+        # Record Team A's new point.
         self.team_a_score += 1
+
         event = {
-            "time": self.media_player.position(),
+            "time": current_time,
             "team": "A",
             "score_a": self.team_a_score,
             "score_b": self.team_b_score,
         }
+
         self.events.append(event)
         self.added_event_history.append(event)
 
-        self.events.sort(key=lambda event: event["time"])
         self.recalculate_scores()
 
-        self.team_a_score = event["score_a"]
-        self.team_b_score = event["score_b"]
+        # Display the score at the current video timestamp.
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(current_time)
+        )
 
         self.update_score_labels()
         self.refresh_event_list(event)
@@ -479,21 +518,32 @@ class MainWindow(QMainWindow):
     def team_b_button_clicked(self):
         self.add_starting_event()
 
+        current_time = self.media_player.position()
+
+        # Calculate the score at the current video timestamp.
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(current_time)
+        )
+
+        # Record Team B's new point.
         self.team_b_score += 1
+
         event = {
-            "time": self.media_player.position(),
+            "time": current_time,
             "team": "B",
             "score_a": self.team_a_score,
             "score_b": self.team_b_score,
         }
+
         self.events.append(event)
         self.added_event_history.append(event)
 
-        self.events.sort(key=lambda event: event["time"])
         self.recalculate_scores()
 
-        self.team_a_score = event["score_a"]
-        self.team_b_score = event["score_b"]
+        # Display the score at the current video timestamp.
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(current_time)
+        )
 
         self.update_score_labels()
         self.refresh_event_list(event)
@@ -502,28 +552,23 @@ class MainWindow(QMainWindow):
         if not self.added_event_history:
             return
 
-        if self.added_event_history[-1]["team"] == "START":
-            return
-
         event = self.added_event_history.pop()
 
-        if event in self.events:
-            self.events.remove(event)
+        if event not in self.events:
+            return
+
+        self.events.remove(event)
 
         self.recalculate_scores()
         self.refresh_event_list()
 
-        if self.events:
-            last_event = self.events[-1]
+        current_time = self.media_player.position()
 
-            self.team_a_score = last_event["score_a"]
-            self.team_b_score = last_event["score_b"]
-        else:
-            self.team_a_score = 0
-            self.team_b_score = 0
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(current_time)
+        )
 
         self.update_score_labels()
-        # self.update_team_buttons()
         
     def delete_selected_event(self):
         selected_row = self.event_list.currentRow()
@@ -531,33 +576,75 @@ class MainWindow(QMainWindow):
         if selected_row < 0:
             return
 
-        if self.events[selected_row]["team"] == "START":
+        event = self.events[selected_row]
+
+        if event["team"] == "START":
             return
 
-        self.events.pop(selected_row)
+        self.events.remove(event)
+
+        # Remove the event from Undo history as well.
+        self.added_event_history = [
+            added_event
+            for added_event in self.added_event_history
+            if added_event is not event
+        ]
 
         self.recalculate_scores()
         self.refresh_event_list()
 
-        if self.events:
-            last_event = self.events[-1]
+        current_time = self.media_player.position()
 
-            self.team_a_score = last_event["score_a"]
-            self.team_b_score = last_event["score_b"]
-        else:
-            self.team_a_score = 0
-            self.team_b_score = 0
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(current_time)
+        )
 
         self.update_score_labels()
-        # self.update_team_buttons()
 
+    def edit_selected_event_time(self):
+        selected_row = self.event_list.currentRow()
+
+        if selected_row < 0:
+            return
+
+        event = self.events[selected_row]
+
+        # Do not allow editing the starting-score event.
+        if event["team"] == "START":
+            return
+
+        # Update the event timestamp to the current video position.
+        event["time"] = self.media_player.position()
+
+        # Recalculate scores and sort events by timestamp.
+        self.recalculate_scores()
+
+        # Refresh the event list.
+        self.refresh_event_list()
+
+        # Keep the edited event selected, even if its row changed.
+        new_row = self.events.index(event)
+        self.event_list.setCurrentRow(new_row)
+
+        # Update the displayed score for the current video position.
+        current_time = self.media_player.position()
+
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(current_time)
+        )
+
+        self.update_score_labels()
+    
     def recalculate_scores(self):
         score_a = self.team_a_starting_score.value()
         score_b = self.team_b_starting_score.value()
 
+        self.events.sort(key=lambda event: event["time"])
+
         for event in self.events:
             if event["team"] == "START":
-                pass
+                score_a = self.team_a_starting_score.value()
+                score_b = self.team_b_starting_score.value()
 
             elif event["team"] == "A":
                 score_a += 1
@@ -567,6 +654,21 @@ class MainWindow(QMainWindow):
 
             event["score_a"] = score_a
             event["score_b"] = score_b
+
+    def get_score_at_time(self, time_ms):
+        score_a = self.team_a_starting_score.value()
+        score_b = self.team_b_starting_score.value()
+
+        for event in sorted(self.events, key=lambda e: e["time"]):
+            if event["time"] > time_ms:
+                break
+
+            if event["team"] == "A":
+                score_a += 1
+            elif event["team"] == "B":
+                score_b += 1
+
+        return score_a, score_b
 
     def refresh_event_list(self, selected_event=None):
         self.event_list.clear()
