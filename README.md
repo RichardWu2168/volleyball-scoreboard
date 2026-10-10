@@ -8,7 +8,7 @@ Volleyball games are often recorded on an action camera and uploaded to YouTube 
 
 Without a score displayed on the video, it can be difficult to determine the game situation when reviewing a particular rally or play.
 
-This application allows a user to record the score while reviewing the video and then automatically add the correct score to the final video.
+This application allows a user to record scores while reviewing a video and then automatically overlay the correct score onto a generated video.
 
 ## Goals
 
@@ -19,10 +19,10 @@ The application is designed to allow a user to:
 3. Manually record a score change while watching the video.
 4. Automatically capture the video timestamp when a score change is recorded.
 5. Maintain the score for both teams throughout the game.
-6. Review and remove previously recorded score events.
-7. Save the score timeline so it can be reopened later.
+6. Review, edit, and remove previously recorded score events.
+7. Save the score timeline and reopen it later.
 8. Generate a new video with the current score displayed on the screen.
-9. Preserve the original video file without modification.
+9. Preserve the original video file without modification during video generation.
 
 ## Application
 
@@ -39,6 +39,8 @@ Example of a generated volleyball video with the score displayed on the video.
 ### 1. Open Video
 
 The user selects a recorded video file, such as an MP4 file from an action camera.
+
+The application displays the video and provides playback controls for reviewing the game.
 
 ### 2. Record Scores
 
@@ -61,32 +63,41 @@ Example:
 00:13:51.420    Team A    14 - 13
 ```
 
+The score timeline is based on the video's playback position, allowing the score to be displayed at the corresponding time during video generation.
+
 ### 3. Review Score Events
 
-The recorded events are displayed in a timeline so the user can review the scoring history.
+The recorded events are displayed in a timeline so the user can review and correct the scoring history.
 
 The application currently supports:
 
-* Add a score event
+* Add a score event for either team
 * Select a recorded event
 * Delete a selected event
-* Undo the most recent score event
-* Change team names before starting a game
-* Configure the starting score
+* Undo scoring events added during the current session
+* Edit the timestamp of a recorded event
+* Recalculate scores after an event is edited or deleted
+* Change team names
+* Configure the starting score before scoring begins
+* Track the number of sets won by each team
 
 ### 4. Save Game Data
 
-The score timeline is saved separately from the original video.
+The score timeline is saved separately from the video in JSON format.
 
-The saved JSON data contains:
+The saved game data contains:
 
-* Video information
+* Video file information
 * Team names
-* Starting score
+* Starting scores
 * Sets won
-* Score-change events
-* Video timestamps
-* Resulting scores
+* Timestamped scoring events
+* The team associated with each scoring event
+* Resulting scores after each event
+
+When a saved game is opened, the application validates the game data before loading it.
+
+If the original video file is no longer available, the saved game can still be opened. The scoring information and event history are preserved, and the user can select a replacement video without losing the recorded scores.
 
 ### 5. Generate Scored Video
 
@@ -103,70 +114,81 @@ For example:
 00:13:51 - ...         14 - 13
 ```
 
-The score is rendered onto the video using FFmpeg.
+The scoreboard displays both team names and their current scores. FFmpeg renders the overlay onto the video and preserves the original audio.
 
-The original video remains unchanged.
+The user can select a video quality setting before generation. The application also displays generation progress and elapsed time and allows the user to cancel an ongoing operation.
+
+The generated video is saved to an output file. The user should choose a different output path from the source video to avoid overwriting the original recording.
 
 ## Functional Requirements
 
 ### Video Playback
 
-* Open common video formats
+* Open a video file
 * Play and pause
 * Seek to a specific position
 * Rewind and fast-forward
-* Display current video time
-* Display total video duration
+* Display the current video time and total duration
 
 ### Score Management
 
-* Two teams
-* Configurable team names
-* Configurable starting score
+* Support two teams
+* Configure team names
+* Configure starting scores before scoring begins
 * Add one point to either team
 * Display the current score
 * Record the video timestamp for each score change
+* Display scoring events in a timeline
 * Select a recorded score event
-* Undo the most recent score change
+* Undo scoring events added during the current session
 * Delete a selected score event
+* Edit the timestamp of a recorded score event
+* Recalculate scores after event changes
+* Track sets won by each team
 
 ### Project Management
 
 * Create a new game
-* Save game data
-* Open an existing game
-* Associate a project with a video file
-* Keep score data separate from the original video
+* Save game data in JSON format
+* Open an existing saved game
+* Associate a saved game with a video file
+* Validate saved game data before loading it
+* Open a saved game even when its original video file is missing
+* Select a replacement video without clearing the saved scoring events
+* Keep score data separate from the video file
 
 ### Video Generation and Scoreboard Overlay
 
 * Generate a new video containing a scoreboard overlay
 * Display both team names and their current scores
-* Update the displayed score based on the video timestamp
+* Update the displayed score according to the video timestamp
 * Preserve the original video's audio
-* Produce a new video file without modifying the original video
+* Select the output video quality
+* Display video-generation progress
+* Display elapsed generation time
+* Cancel video generation
 * Use FFmpeg for video processing
 
 ## Non-Functional Requirements
 
 * Windows desktop application
 * Simple and easy-to-use interface
-* Works offline
-* The original video must never be modified
+* Works offline, with FFmpeg available locally
 * Score recording should be fast enough to use while reviewing a game
-* Support long video files
-* Handle video-processing errors without modifying the original video
+* Support long video files, subject to available system resources and video format
+* Validate saved game data and report invalid data
+* Handle video-processing errors and cancellation
+* Keep the original video separate from the generated output by using a different output path
 
 ## Future Improvements
 
 The following features are outside the current version but may be considered later:
 
-* Edit an existing score event
-* Multiple sets with automatic set transitions
+* More advanced editing of scoring events, including changing the team or score associated with an event
+* Multiple sets with automatic set transitions and set-specific scoring
 * Configurable scoreboard position
 * Scoreboard themes and styling
-* Video-generation progress information
-* Keyboard shortcuts
+* Keyboard shortcuts for playback and score entry
 * Export score data to CSV
 * Generate YouTube chapters
 * Volleyball-specific statistics
@@ -202,22 +224,20 @@ volleyball-scoreboard/
 ├── src/
 │   └── main.py
 ├── screenshots/
-│   └── scoreboard.png       # Main application screenshot
+│   ├── scoreboard.png       # Main application screenshot
 │   └── scored-video.png     # Example of the scoreboard overlaid on a video
 ├── examples/
-│   └── sample_game.json     # Sample game file 
+│   └── sample_game.json     # Sample game file
 ├── README.md
 └── ...
 ```
 
 ## Sample Game Data
 
-A sample game file is provided in [`examples/sample_game.json`](examples/sample_game.json).
-
-The file contains the team information, starting score, set scores, and timestamped scoring events used to generate the scoreboard overlay.
+If a sample game file is included in [`examples/sample_game.json`](examples/sample_game.json), it can be used to inspect the JSON structure for team information, starting scores, sets won, and timestamped scoring events.
 
 ## Status
 
 This project is actively under development.
 
-The current version supports video playback, manual score entry, score-event management, saving and loading game data, and generating a scored video using FFmpeg.
+The current version supports video playback, manual score entry, score-event management, editing event timestamps, saving and loading game data, loading saved games when the original video is missing, and generating a scored video using FFmpeg. Video generation includes quality selection, progress reporting, elapsed-time display, and cancellation.
