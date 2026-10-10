@@ -4,9 +4,8 @@ import subprocess
 import sys
 
 from pathlib import Path
-from warnings import filters
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QUrl, Qt, QProcess
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -19,6 +18,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSlider,
     QSpinBox,
@@ -120,6 +120,40 @@ class MainWindow(QMainWindow):
         self.save_button = QPushButton("Save Game")
         self.load_button = QPushButton("Load Game")
         self.generate_video_button = QPushButton("Generate Video")
+        self.video_progress_bar = QProgressBar()
+        self.video_progress_bar.setRange(0, 100)
+        self.video_progress_bar.setValue(0)
+        self.video_progress_bar.setFormat("Ready")
+        self.video_progress_bar.setVisible(True)
+
+        # Make the progress bar more noticeable.
+
+        self.video_progress_bar.setStyleSheet(
+            "QProgressBar {"
+            "    border: none;"
+            "    text-align: center;"
+            "}"
+            "QProgressBar::chunk {"
+            "    background-color: #05B8CC;"
+            "}"
+        )
+
+        self.ffmpeg_process = QProcess(self)
+        self.ffmpeg_error_output = ""
+        self.ffmpeg_output_buffer = ""
+        self.video_duration_seconds = 0
+
+        self.ffmpeg_process.readyReadStandardOutput.connect(
+            self.update_video_progress
+        )
+
+        self.ffmpeg_process.readyReadStandardError.connect(
+            self.read_ffmpeg_error
+        )
+
+        self.ffmpeg_process.finished.connect(
+            self.video_generation_finished
+        )
 
         self.initialize_button.clicked.connect(self.initialize_scores)
 
@@ -265,6 +299,9 @@ class MainWindow(QMainWindow):
         # Generate Video button
         right_layout.addWidget(self.generate_video_button)
 
+        # Video generation progress
+        right_layout.addWidget(self.video_progress_bar)
+
         main_layout.addLayout(left_layout, 4)
         main_layout.addLayout(right_layout, 1)
 
@@ -409,6 +446,12 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
 
+        # Check whether the current game's video file is missing.
+        replacing_missing_video = (
+            bool(self.video_file_path)
+            and not os.path.exists(self.video_file_path)
+        )
+
         # Determine whether this is the same video
         same_video = False
 
@@ -425,7 +468,7 @@ class MainWindow(QMainWindow):
         if same_video:
             return
 
-        if self.events:
+        if self.events and not replacing_missing_video:
             result = QMessageBox.question(
                 self,
                 "Open New Video",
@@ -438,15 +481,16 @@ class MainWindow(QMainWindow):
             if result != QMessageBox.Yes:
                 return
 
-        self.events.clear()
-        self.added_event_history.clear()
-        self.event_list.clear()
+        if not replacing_missing_video:
+            self.events.clear()
+            self.added_event_history.clear()
+            self.event_list.clear()
 
-        self.team_a_score = self.team_a_starting_score.value()
-        self.team_b_score = self.team_b_starting_score.value()
+            self.team_a_score = self.team_a_starting_score.value()
+            self.team_b_score = self.team_b_starting_score.value()
 
-        self.update_score_labels()
-        self.update_team_buttons()
+            self.update_score_labels()
+            self.update_team_buttons()
 
         self.video_file_path = file_path
         self.video_file_label.setText(
@@ -665,8 +709,13 @@ class MainWindow(QMainWindow):
             if event["time"] > time_ms:
                 break
 
-            if event["team"] == "A":
+            if event["team"] == "START":
+                score_a = self.team_a_starting_score.value()
+                score_b = self.team_b_starting_score.value()
+
+            elif event["team"] == "A":
                 score_a += 1
+
             elif event["team"] == "B":
                 score_b += 1
 
@@ -710,6 +759,10 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
 
+        # Add the .json extension if the user omitted it.
+        if not file_path.lower().endswith(".json"):
+            file_path += ".json"
+
         game_data = {
             "video_file": self.video_file_path,
             "team_a_name": self.team_a_name.text(),
@@ -721,8 +774,16 @@ class MainWindow(QMainWindow):
             "events": self.events,
         }
 
-        with open(file_path, "w", encoding="utf-8") as file:
-            json.dump(game_data, file, indent=4)
+        try:
+            with open(file_path, "w", encoding="utf-8") as file:
+                json.dump(game_data, file, indent=4)
+
+        except (OSError, TypeError, ValueError) as error:
+            QMessageBox.critical(
+                self,
+                "Save Failed",
+                f"Could not save the game.\n\n{error}"
+            )
 
     def load_game(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -735,10 +796,142 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
 
-        with open(file_path, "r", encoding="utf-8") as file:
-            game_data = json.load(file)
+        # Read and validate the file before modifying the current game.
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                game_data = json.load(file)
 
+            required_fields = [
+                "video_file",
+                "team_a_name",
+                "team_b_name",
+                "starting_score_a",
+                "starting_score_b",
+                "events",
+            ]
+
+            for field in required_fields:
+                if field not in game_data:
+                    raise ValueError(
+                        f"Required field '{field}' is missing."
+                    )
+
+            if not isinstance(game_data["events"], list):
+                raise ValueError("'events' must be a list.")
+
+            # Validate starting scores before checking event consistency.
+            for field in ("starting_score_a", "starting_score_b"):
+                value = game_data[field]
+
+                if (
+                    not isinstance(value, int)
+                    or isinstance(value, bool)
+                    or value < 0
+                ):
+                    raise ValueError(
+                        f"'{field}' must be a non-negative integer."
+                    )
+
+            # Validate each event's structure and values first.
+            for index, event in enumerate(game_data["events"]):
+                if not isinstance(event, dict):
+                    raise ValueError(
+                        f"Event {index + 1} must be an object."
+                    )
+
+                for field in ("time", "team", "score_a", "score_b"):
+                    if field not in event:
+                        raise ValueError(
+                            f"Event {index + 1} is missing '{field}'."
+                        )
+
+                if event["team"] not in ("START", "A", "B"):
+                    raise ValueError(
+                        f"Event {index + 1} has an invalid team."
+                    )
+
+                if (
+                    not isinstance(event["time"], (int, float))
+                    or isinstance(event["time"], bool)
+                    or event["time"] < 0
+                ):
+                    raise ValueError(
+                        f"Event {index + 1} has an invalid timestamp."
+                    )
+
+                for score_key in ("score_a", "score_b"):
+                    score = event[score_key]
+
+                    if (
+                        not isinstance(score, int)
+                        or isinstance(score, bool)
+                        or score < 0
+                    ):
+                        raise ValueError(
+                            f"Event {index + 1} has an invalid {score_key}."
+                        )
+
+            # Validate event scores in chronological order.
+            expected_score_a = game_data["starting_score_a"]
+            expected_score_b = game_data["starting_score_b"]
+
+            sorted_events = sorted(
+                game_data["events"],
+                key=lambda event: event["time"]
+            )
+
+            for index, event in enumerate(sorted_events):
+                if event["team"] == "START":
+                    expected_score_a = game_data["starting_score_a"]
+                    expected_score_b = game_data["starting_score_b"]
+
+                elif event["team"] == "A":
+                    expected_score_a += 1
+
+                elif event["team"] == "B":
+                    expected_score_b += 1
+
+                if (
+                    event["score_a"] != expected_score_a
+                    or event["score_b"] != expected_score_b
+                ):
+                    raise ValueError(
+                        f"Event {index + 1} has scores that do not "
+                        "match the event history."
+                    )
+
+            if not isinstance(game_data["video_file"], str):
+                raise ValueError("'video_file' must be a string.")
+
+            if not isinstance(game_data["team_a_name"], str):
+                raise ValueError("'team_a_name' must be a string.")
+
+            if not isinstance(game_data["team_b_name"], str):
+                raise ValueError("'team_b_name' must be a string.")
+
+            for field in ("team_a_sets_won", "team_b_sets_won"):
+                value = game_data.get(field, 0)
+
+                if (
+                    not isinstance(value, int)
+                    or isinstance(value, bool)
+                    or value < 0
+                ):
+                    raise ValueError(
+                        f"'{field}' must be a non-negative integer."
+                    )
+
+        except (OSError, json.JSONDecodeError, ValueError, TypeError) as error:
+            QMessageBox.critical(
+                self,
+                "Load Failed",
+                f"Could not load the game file.\n\n{error}"
+            )
+            return
+
+        # Apply the validated data to the application.
         self.video_file_path = game_data["video_file"]
+
         self.video_file_label.setText(
             f"Video: {os.path.basename(self.video_file_path)}"
         )
@@ -746,8 +939,12 @@ class MainWindow(QMainWindow):
         self.team_a_name.setText(game_data["team_a_name"])
         self.team_b_name.setText(game_data["team_b_name"])
 
-        self.team_a_sets_won.setValue(game_data.get("team_a_sets_won", 0))
-        self.team_b_sets_won.setValue(game_data.get("team_b_sets_won", 0))
+        self.team_a_sets_won.setValue(
+            game_data.get("team_a_sets_won", 0)
+        )
+        self.team_b_sets_won.setValue(
+            game_data.get("team_b_sets_won", 0)
+        )
 
         self.team_a_starting_score.setValue(
             game_data["starting_score_a"]
@@ -757,17 +954,16 @@ class MainWindow(QMainWindow):
         )
 
         self.events = game_data["events"]
+        self.added_event_history = []
 
         self.recalculate_scores()
         self.refresh_event_list()
 
-        if self.events:
-            last_event = self.events[-1]
-            self.team_a_score = last_event["score_a"]
-            self.team_b_score = last_event["score_b"]
-        else:
-            self.team_a_score = self.team_a_starting_score.value()
-            self.team_b_score = self.team_b_starting_score.value()
+        self.team_a_score, self.team_b_score = (
+            self.get_score_at_time(
+                self.media_player.position()
+            )
+        )
 
         self.update_score_labels()
         self.update_team_buttons()
@@ -825,6 +1021,23 @@ class MainWindow(QMainWindow):
 
         return timeline
 
+    def escape_ffmpeg_text(self, text):
+        """Escape text for use in FFmpeg's drawtext filter."""
+        text = str(text)
+
+        # Escape backslashes first.
+        text = text.replace("\\", "\\\\")
+        text = text.replace(":", "\\:")
+        text = text.replace(",", "\\,")
+        text = text.replace("[", "\\[")
+        text = text.replace("]", "\\]")
+        text = text.replace("%", "\\%")
+
+        # Escape apostrophes for FFmpeg filter syntax.
+        text = text.replace("'", "'\\''")
+
+        return text
+
     def build_ffmpeg_filter(self, timeline):
         filters = []
 
@@ -836,9 +1049,9 @@ class MainWindow(QMainWindow):
 
         for i, period in enumerate(timeline):
             text = (
-                f"{sets_a}  {team_a_name}    "
+                f"{sets_a}  {self.escape_ffmpeg_text(team_a_name)}    "
                 f"{period['score_a']} - {period['score_b']}    "
-                f"{team_b_name}  {sets_b}"
+                f"{self.escape_ffmpeg_text(team_b_name)}  {sets_b}"
             )
 
             start = period["start_time"] / 1000
@@ -865,34 +1078,28 @@ class MainWindow(QMainWindow):
         return ",".join(filters)
 
     def generate_video(self):
+        # Check whether a video has been selected.
         if not self.video_file_path:
             QMessageBox.warning(
                 self,
                 "No Video",
-                "Please load a video first."
+                "Please open a video file first."
             )
             return
 
-        if not os.path.exists(self.video_file_path):
-            QMessageBox.warning(
-                self,
-                "Video Not Found",
-                f"The video file could not be found:\n\n"
-                f"{self.video_file_path}"
-            )
-            return
-
+        # Check whether there are any score events.
         if not self.events:
             QMessageBox.warning(
                 self,
                 "No Score Events",
-                "There are no score events to generate."
+                "Please add at least one score event before generating the video."
             )
             return
 
+        # Ask the user where to save the generated video.
         output_file, _ = QFileDialog.getSaveFileName(
             self,
-            "Generate Video",
+            "Save Generated Video",
             "",
             "MP4 Video (*.mp4)"
         )
@@ -900,23 +1107,29 @@ class MainWindow(QMainWindow):
         if not output_file:
             return
 
-        # Build the score timeline from the recorded events.
-        timeline = self.build_score_timeline()
+        # Add the .mp4 extension if necessary.
+        if not output_file.lower().endswith(".mp4"):
+            output_file += ".mp4"
 
-        if not timeline:
+        # Get the video duration in seconds.
+        self.video_duration_seconds = self.media_player.duration() / 1000
+
+        if self.video_duration_seconds <= 0:
             QMessageBox.warning(
                 self,
-                "No Timeline",
-                "There is no score timeline to generate."
+                "Invalid Video Duration",
+                "The video duration is not available. Please wait until the video loads."
             )
             return
 
-        # Build the FFmpeg drawtext filter.
+        # Build the timeline and FFmpeg filter.
+        timeline = self.build_score_timeline()
         ffmpeg_filter = self.build_ffmpeg_filter(timeline)
 
+        # Prepare the FFmpeg command.
         command = [
-            "ffmpeg",
             "-y",
+            "-nostats",
             "-i",
             self.video_file_path,
             "-vf",
@@ -929,44 +1142,107 @@ class MainWindow(QMainWindow):
             "23",
             "-c:a",
             "copy",
+            "-progress",
+            "pipe:1",
+            "-nostats",
             output_file
         ]
 
-        try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True
-            )
+        # Reset the progress bar and error output.
+        self.ffmpeg_error_output = ""
+        self.video_progress_bar.setValue(0)
+        self.video_progress_bar.setFormat("Generating video: 0%")
+        self.video_progress_bar.setVisible(True)
 
-            if result.returncode != 0:
-                QMessageBox.critical(
-                    self,
-                    "FFmpeg Error",
-                    result.stderr[-3000:]
-                )
-                return
+        # Prevent another generation request while FFmpeg is running.
+        self.generate_video_button.setEnabled(False)
+
+        # Start FFmpeg asynchronously.
+        self.ffmpeg_process.setProgram("ffmpeg")
+        self.ffmpeg_process.setArguments(command)
+        self.ffmpeg_process.start()
+
+    def update_video_progress(self):
+        output = bytes(
+            self.ffmpeg_process.readAllStandardOutput()
+        ).decode("utf-8", errors="replace")
+
+        # Keep any incomplete line for the next read.
+        self.ffmpeg_output_buffer += output
+        lines = self.ffmpeg_output_buffer.split("\n")
+
+        # The last element may be incomplete, so retain it.
+        self.ffmpeg_output_buffer = lines.pop()
+
+        for line in lines:
+            line = line.strip()
+
+            if line.startswith("out_time="):
+                time_text = line.split("=", 1)[1]
+
+                if (
+                    time_text != "N/A"
+                    and self.video_duration_seconds > 0
+                ):
+                    try:
+                        hours, minutes, seconds = time_text.split(":")
+
+                        elapsed = (
+                            int(hours) * 3600
+                            + int(minutes) * 60
+                            + float(seconds)
+                        )
+
+                        percent = int(
+                            elapsed / self.video_duration_seconds * 100
+                        )
+
+                        # Keep progress below 100% until FFmpeg finishes.
+                        percent = max(0, min(99, percent))
+
+                        # Never let the displayed percentage decrease.
+                        percent = max(
+                            self.video_progress_bar.value(),
+                            percent,
+                        )
+
+                        self.video_progress_bar.setValue(percent)
+                        self.video_progress_bar.setFormat(
+                            f"Generating video: {percent}%"
+                        )
+
+                    except ValueError:
+                        pass
+
+    def read_ffmpeg_error(self):
+        error = bytes(
+            self.ffmpeg_process.readAllStandardError()
+        ).decode("utf-8", errors="replace")
+
+        self.ffmpeg_error_output += error
+
+
+    def video_generation_finished(self, exit_code, exit_status):
+        self.generate_video_button.setEnabled(True)
+
+        if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
+            self.video_progress_bar.setValue(100)
+            self.video_progress_bar.setFormat("Completed: 100%")
 
             QMessageBox.information(
                 self,
                 "Video Generated",
-                f"Video generated successfully:\n\n{output_file}"
+                "The video was generated successfully."
             )
+        else:
+            self.video_progress_bar.setFormat("Generation failed")
 
-        except FileNotFoundError:
             QMessageBox.critical(
                 self,
-                "FFmpeg Not Found",
-                "FFmpeg could not be found. "
-                "Please make sure FFmpeg is installed and available in PATH."
+                "Video Generation Failed",
+                self.ffmpeg_error_output or "FFmpeg could not generate the video."
             )
 
-        except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to generate video:\n\n{e}"
-            )
 app = QApplication(sys.argv)
 
 window = MainWindow()
