@@ -49,3 +49,51 @@ class VideoProgress:
 
         self.elapsed_label.setText("Elapsed time: 00:00:00")
         self.elapsed_label.setVisible(False)
+
+    def update_progress(self, output, video_duration_seconds, progress_bar):
+        # Keep any incomplete line for the next read.
+        self.output_buffer += output
+        lines = self.output_buffer.split("\n")
+
+        # The last element may be incomplete, so retain it.
+        self.output_buffer = lines.pop()
+
+        for line in lines:
+            line = line.strip()
+
+            if line.startswith("out_time="):
+                time_text = line.split("=", 1)[1]
+
+                if (
+                    time_text != "N/A"
+                    and video_duration_seconds > 0
+                ):
+                    try:
+                        hours, minutes, seconds = time_text.split(":")
+
+                        elapsed = (
+                            int(hours) * 3600
+                            + int(minutes) * 60
+                            + float(seconds)
+                        )
+
+                        percent = int(
+                            elapsed / video_duration_seconds * 100
+                        )
+
+                        # Keep progress below 100% until FFmpeg finishes.
+                        percent = max(0, min(99, percent))
+
+                        # Never let the displayed percentage decrease.
+                        percent = max(
+                            progress_bar.value(),
+                            percent,
+                        )
+
+                        progress_bar.setValue(percent)
+                        progress_bar.setFormat(
+                            f"Generating video: {percent}%"
+                        )
+
+                    except ValueError:
+                        pass

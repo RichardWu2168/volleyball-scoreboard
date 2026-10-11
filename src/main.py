@@ -184,7 +184,6 @@ class MainWindow(QMainWindow):
         self.video_generation_cancelled = False
         self.ffmpeg_process = QProcess(self)
         self.ffmpeg_error_output = ""
-        self.ffmpeg_output_buffer = ""
         self.video_duration_seconds = 0
 
         self.ffmpeg_process.readyReadStandardOutput.connect(
@@ -925,7 +924,7 @@ class MainWindow(QMainWindow):
 
         # Reset the progress bar and error output.
         self.ffmpeg_error_output = ""
-        self.ffmpeg_output_buffer = ""
+        self.video_progress.output_buffer = ""
         self.video_generation_cancelled = False
         self.video_progress_bar.setValue(0)
         self.video_progress_bar.setFormat("Generating video: 0%")
@@ -949,52 +948,11 @@ class MainWindow(QMainWindow):
             self.ffmpeg_process.readAllStandardOutput()
         ).decode("utf-8", errors="replace")
 
-        # Keep any incomplete line for the next read.
-        self.ffmpeg_output_buffer += output
-        lines = self.ffmpeg_output_buffer.split("\n")
-
-        # The last element may be incomplete, so retain it.
-        self.ffmpeg_output_buffer = lines.pop()
-
-        for line in lines:
-            line = line.strip()
-
-            if line.startswith("out_time="):
-                time_text = line.split("=", 1)[1]
-
-                if (
-                    time_text != "N/A"
-                    and self.video_duration_seconds > 0
-                ):
-                    try:
-                        hours, minutes, seconds = time_text.split(":")
-
-                        elapsed = (
-                            int(hours) * 3600
-                            + int(minutes) * 60
-                            + float(seconds)
-                        )
-
-                        percent = int(
-                            elapsed / self.video_duration_seconds * 100
-                        )
-
-                        # Keep progress below 100% until FFmpeg finishes.
-                        percent = max(0, min(99, percent))
-
-                        # Never let the displayed percentage decrease.
-                        percent = max(
-                            self.video_progress_bar.value(),
-                            percent,
-                        )
-
-                        self.video_progress_bar.setValue(percent)
-                        self.video_progress_bar.setFormat(
-                            f"Generating video: {percent}%"
-                        )
-
-                    except ValueError:
-                        pass
+        self.video_progress.update_progress(
+            output,
+            self.video_duration_seconds,
+            self.video_progress_bar,
+        )
 
     def read_ffmpeg_error(self):
         error = bytes(
