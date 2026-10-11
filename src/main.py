@@ -6,6 +6,7 @@ import time
 
 from game import GameData
 from scoreboard import Scoreboard
+from video import VideoController
 
 from PySide6.QtCore import QUrl, Qt, QProcess, QTimer
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -34,6 +35,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self.game_data = GameData()
+        self.scoreboard = Scoreboard(self.game_data)
+        self.video_controller = VideoController(self)
+
         self.video_file_label = QLabel("No video loaded")
 
         self.video_widget = QVideoWidget()
@@ -49,9 +54,15 @@ class MainWindow(QMainWindow):
         self.forward_button = QPushButton("+10 sec")
 
         self.media_player = QMediaPlayer()
-        self.media_player.positionChanged.connect(self.position_changed)
-        self.media_player.durationChanged.connect(self.duration_changed)
-        self.media_player.playbackStateChanged.connect(self.playback_state_changed)
+        self.media_player.positionChanged.connect(
+            self.video_controller.position_changed
+        )
+        self.media_player.durationChanged.connect(
+            self.video_controller.duration_changed
+        )
+        self.media_player.playbackStateChanged.connect(
+            self.video_controller.playback_state_changed
+        )
 
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
@@ -60,9 +71,6 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Volleyball Scoreboard")
 
-        self.game_data = GameData()
-        self.scoreboard = Scoreboard(self.game_data)
-        
         self.added_event_history = []
         self.event_list = QListWidget()
 
@@ -199,11 +207,11 @@ class MainWindow(QMainWindow):
         self.initialize_button.clicked.connect(self.initialize_scores)
 
         self.open_video_button.clicked.connect(self.open_video)    
-        self.play_button.clicked.connect(self.play_pause)
-        self.rewind_button.clicked.connect(self.rewind)
-        self.forward_button.clicked.connect(self.forward)
-        self.position_slider.sliderMoved.connect(self.seek)
-        self.position_slider.sliderPressed.connect(self.seek_from_slider)
+        self.play_button.clicked.connect(self.video_controller.play_pause)
+        self.rewind_button.clicked.connect(self.video_controller.rewind)
+        self.forward_button.clicked.connect(self.video_controller.forward)
+        self.position_slider.sliderMoved.connect(self.video_controller.seek)
+        self.position_slider.sliderPressed.connect(self.video_controller.seek_from_slider)
 
         self.team_a_starting_score.valueChanged.connect(self.update_starting_score_labels)
         self.team_b_starting_score.valueChanged.connect(self.update_starting_score_labels)
@@ -450,57 +458,6 @@ class MainWindow(QMainWindow):
         self.team_b_starting_score.setEnabled(True)
 
         self.initialize_button.setEnabled(True)
-
-    def play_pause(self):
-        if self.media_player.isPlaying():
-            self.media_player.pause()
-        else:
-            self.media_player.play()
-
-    def rewind(self):
-        new_position = max(0, self.media_player.position() - 10000)
-        self.media_player.setPosition(new_position)
-
-    def forward(self):
-        new_position = self.media_player.position() + 10000
-        self.media_player.setPosition(new_position)
-
-    def position_changed(self, position):
-        self.position_slider.setValue(position)
-
-        self.position_label.setText(
-            f"{self.format_time(position)} / "
-            f"{self.format_time(self.media_player.duration())}"
-        )
-
-        # Update the score based on the current video position.
-        self.team_a_score, self.team_b_score = (
-            self.scoreboard.get_score_at_time(position)
-        )
-
-        self.update_score_labels()
-
-    def duration_changed(self, duration):
-        self.position_slider.setRange(0, duration)
-
-    def seek(self, position):
-        self.media_player.setPosition(position)
-
-    def seek_from_slider(self):
-        position = self.position_slider.value()
-        self.media_player.setPosition(position)
-
-        self.team_a_score, self.team_b_score = (
-            self.scoreboard.get_score_at_time(position)
-        )
-
-        self.update_score_labels()
-
-    def playback_state_changed(self, state):
-        if state == QMediaPlayer.PlayingState:
-            self.play_button.setText("Pause")
-        else:
-            self.play_button.setText("Play")
 
     def open_video(self):
         file_path, _ = QFileDialog.getOpenFileName(
