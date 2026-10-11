@@ -5,6 +5,7 @@ import sys
 import time
 
 from game import GameData
+from scoreboard import Scoreboard
 
 from PySide6.QtCore import QUrl, Qt, QProcess, QTimer
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -60,6 +61,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Volleyball Scoreboard")
 
         self.game_data = GameData()
+        self.scoreboard = Scoreboard(self.game_data)
         
         self.added_event_history = []
         self.event_list = QListWidget()
@@ -473,7 +475,7 @@ class MainWindow(QMainWindow):
 
         # Update the score based on the current video position.
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(position)
+            self.scoreboard.get_score_at_time(position)
         )
 
         self.update_score_labels()
@@ -489,7 +491,7 @@ class MainWindow(QMainWindow):
         self.media_player.setPosition(position)
 
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(position)
+            self.scoreboard.get_score_at_time(position)
         )
 
         self.update_score_labels()
@@ -602,7 +604,7 @@ class MainWindow(QMainWindow):
 
         # Calculate the score at the current video timestamp.
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         # Record Team A's new point.
@@ -622,11 +624,11 @@ class MainWindow(QMainWindow):
         self.team_a_starting_score.setEnabled(False)
         self.team_b_starting_score.setEnabled(False)
 
-        self.recalculate_scores()
+        self.scoreboard.recalculate_scores()
 
         # Display the score at the current video timestamp.
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         self.update_score_labels()
@@ -639,7 +641,7 @@ class MainWindow(QMainWindow):
 
         # Calculate the score at the current video timestamp.
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         # Record Team B's new point.
@@ -659,11 +661,11 @@ class MainWindow(QMainWindow):
         self.team_a_starting_score.setEnabled(False)
         self.team_b_starting_score.setEnabled(False)
 
-        self.recalculate_scores()
+        self.scoreboard.recalculate_scores()
 
         # Display the score at the current video timestamp.
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         self.update_score_labels()
@@ -682,13 +684,13 @@ class MainWindow(QMainWindow):
         self.added_event_history.pop()
         self.game_data.events.remove(event)
 
-        self.recalculate_scores()
+        self.scoreboard.recalculate_scores()
         self.refresh_event_list()
 
         current_time = self.media_player.position()
 
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         self.update_score_labels()
@@ -713,13 +715,13 @@ class MainWindow(QMainWindow):
             if added_event is not event
         ]
 
-        self.recalculate_scores()
+        self.scoreboard.recalculate_scores()
         self.refresh_event_list()
 
         current_time = self.media_player.position()
 
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         self.update_score_labels()
@@ -740,7 +742,7 @@ class MainWindow(QMainWindow):
         event["time"] = self.media_player.position()
 
         # Recalculate scores and sort events by timestamp.
-        self.recalculate_scores()
+        self.scoreboard.recalculate_scores()
 
         # Refresh the event list.
         self.refresh_event_list()
@@ -753,51 +755,11 @@ class MainWindow(QMainWindow):
         current_time = self.media_player.position()
 
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         self.update_score_labels()
     
-    def recalculate_scores(self):
-        score_a = self.game_data.starting_score_a
-        score_b = self.game_data.starting_score_b
-
-        self.game_data.events.sort(key=lambda event: event["time"])
-
-        for event in self.game_data.events:
-            if event["team"] == "START":
-                score_a = self.game_data.starting_score_a
-                score_b = self.game_data.starting_score_b
-
-            elif event["team"] == "A":
-                score_a += 1
-
-            elif event["team"] == "B":
-                score_b += 1
-
-            event["score_a"] = score_a
-            event["score_b"] = score_b
-
-    def get_score_at_time(self, time_ms):
-        score_a = self.game_data.starting_score_a
-        score_b = self.game_data.starting_score_b
-
-        for event in sorted(self.game_data.events, key=lambda e: e["time"]):
-            if event["time"] > time_ms:
-                break
-
-            if event["team"] == "START":
-                score_a = self.game_data.starting_score_a
-                score_b = self.game_data.starting_score_b
-
-            elif event["team"] == "A":
-                score_a += 1
-
-            elif event["team"] == "B":
-                score_b += 1
-
-        return score_a, score_b
-
     def refresh_event_list(self, selected_event=None):
         self.event_list.clear()
 
@@ -1069,10 +1031,10 @@ class MainWindow(QMainWindow):
         # Reset the undo history for the newly loaded game.
         self.added_event_history = []
 
-        self.recalculate_scores()
+        self.scoreboard.recalculate_scores()
         self.refresh_event_list()
 
-        self.team_a_score, self.team_b_score = self.get_score_at_time(
+        self.team_a_score, self.team_b_score = self.scoreboard.get_score_at_time(
             self.media_player.position()
         )
 
