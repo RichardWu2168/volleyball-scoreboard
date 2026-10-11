@@ -4,6 +4,8 @@ import os
 import sys
 import time
 
+from game import GameData
+
 from PySide6.QtCore import QUrl, Qt, QProcess, QTimer
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -31,7 +33,6 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.video_file_path = ""
         self.video_file_label = QLabel("No video loaded")
 
         self.video_widget = QVideoWidget()
@@ -57,8 +58,9 @@ class MainWindow(QMainWindow):
         self.media_player.setVideoOutput(self.video_widget)
 
         self.setWindowTitle("Volleyball Scoreboard")
+
+        self.game_data = GameData()
         
-        self.events = []
         self.added_event_history = []
         self.event_list = QListWidget()
 
@@ -374,7 +376,7 @@ class MainWindow(QMainWindow):
 
     def event_selected(self, item):
         row = self.event_list.row(item)
-        event = self.events[row]
+        event = self.game_data.events[row]
 
         self.media_player.setPosition(event["time"])
 
@@ -412,7 +414,7 @@ class MainWindow(QMainWindow):
         )        
 
     def reset_game_state(self):
-        self.events.clear()
+        self.game_data.events.clear()
         self.added_event_history.clear()
         self.event_list.clear()
 
@@ -506,16 +508,16 @@ class MainWindow(QMainWindow):
 
         # Check whether the current game's video file is missing.
         replacing_missing_video = (
-            bool(self.video_file_path)
-            and not os.path.exists(self.video_file_path)
+            bool(self.game_data.video_file)
+            and not os.path.exists(self.game_data.video_file)
         )
 
         # Determine whether this is the same video
         same_video = False
 
-        if self.video_file_path:
+        if self.game_data.video_file:
             current_path = os.path.normcase(
-                os.path.abspath(self.video_file_path)
+                os.path.abspath(self.game_data.video_file)
             )
             new_path = os.path.normcase(
                 os.path.abspath(file_path)
@@ -526,7 +528,7 @@ class MainWindow(QMainWindow):
         if same_video:
             return
 
-        if self.events and not replacing_missing_video:
+        if self.game_data.events and not replacing_missing_video:
             result = QMessageBox.question(
                 self,
                 "Open New Video",
@@ -540,7 +542,7 @@ class MainWindow(QMainWindow):
                 return
 
         if not replacing_missing_video:
-            self.events.clear()
+            self.game_data.events.clear()
             self.added_event_history.clear()
             self.event_list.clear()
 
@@ -554,7 +556,7 @@ class MainWindow(QMainWindow):
             self.reset_video_elapsed_time()
             self.video_status_label.setText("Status: Ready")
 
-        self.video_file_path = file_path
+        self.game_data.video_file = file_path
         self.video_file_label.setText(
             f"Video: {os.path.basename(file_path)}"
         )
@@ -573,7 +575,7 @@ class MainWindow(QMainWindow):
         return f"{minutes:02d}:{seconds:02d}.{millis:03d}"
 
     def add_starting_event(self):
-        if self.events:
+        if self.game_data.events:
             return
 
         self.team_a_score = self.team_a_starting_score.value()
@@ -586,7 +588,7 @@ class MainWindow(QMainWindow):
             "score_b": self.team_b_starting_score.value(),
         }
 
-        self.events.append(event)
+        self.game_data.events.append(event)
 
     def team_a_button_clicked(self):
         self.add_starting_event()
@@ -608,7 +610,7 @@ class MainWindow(QMainWindow):
             "score_b": self.team_b_score,
         }
 
-        self.events.append(event)
+        self.game_data.events.append(event)
         self.added_event_history.append(event)
 
         # Lock the starting scores once the first point is recorded.
@@ -645,7 +647,7 @@ class MainWindow(QMainWindow):
             "score_b": self.team_b_score,
         }
 
-        self.events.append(event)
+        self.game_data.events.append(event)
         self.added_event_history.append(event)
 
         # Lock the starting scores once the first point is recorded.
@@ -668,12 +670,12 @@ class MainWindow(QMainWindow):
 
         event = self.added_event_history[-1]
 
-        if event not in self.events:
+        if event not in self.game_data.events:
             self.added_event_history.pop()
             return
 
         self.added_event_history.pop()
-        self.events.remove(event)
+        self.game_data.events.remove(event)
 
         self.recalculate_scores()
         self.refresh_event_list()
@@ -692,12 +694,12 @@ class MainWindow(QMainWindow):
         if selected_row < 0:
             return
 
-        event = self.events[selected_row]
+        event = self.game_data.events[selected_row]
 
         if event["team"] == "START":
             return
 
-        self.events.remove(event)
+        self.game_data.events.remove(event)
 
         # Remove the event from Undo history as well.
         self.added_event_history = [
@@ -723,7 +725,7 @@ class MainWindow(QMainWindow):
         if selected_row < 0:
             return
 
-        event = self.events[selected_row]
+        event = self.game_data.events[selected_row]
 
         # Do not allow editing the starting-score event.
         if event["team"] == "START":
@@ -739,7 +741,7 @@ class MainWindow(QMainWindow):
         self.refresh_event_list()
 
         # Keep the edited event selected, even if its row changed.
-        new_row = self.events.index(event)
+        new_row = self.game_data.events.index(event)
         self.event_list.setCurrentRow(new_row)
 
         # Update the displayed score for the current video position.
@@ -755,9 +757,9 @@ class MainWindow(QMainWindow):
         score_a = self.team_a_starting_score.value()
         score_b = self.team_b_starting_score.value()
 
-        self.events.sort(key=lambda event: event["time"])
+        self.game_data.events.sort(key=lambda event: event["time"])
 
-        for event in self.events:
+        for event in self.game_data.events:
             if event["team"] == "START":
                 score_a = self.team_a_starting_score.value()
                 score_b = self.team_b_starting_score.value()
@@ -775,7 +777,7 @@ class MainWindow(QMainWindow):
         score_a = self.team_a_starting_score.value()
         score_b = self.team_b_starting_score.value()
 
-        for event in sorted(self.events, key=lambda e: e["time"]):
+        for event in sorted(self.game_data.events, key=lambda e: e["time"]):
             if event["time"] > time_ms:
                 break
 
@@ -794,7 +796,7 @@ class MainWindow(QMainWindow):
     def refresh_event_list(self, selected_event=None):
         self.event_list.clear()
 
-        for event in self.events:
+        for event in self.game_data.events:
             time_text = self.format_time(event["time"])
 
             if event["team"] == "START":
@@ -811,7 +813,7 @@ class MainWindow(QMainWindow):
             )
 
         if selected_event is not None:
-            for row, event in enumerate(self.events):
+            for row, event in enumerate(self.game_data.events):
                 if event is selected_event:
                     item = self.event_list.item(row)
                     self.event_list.setCurrentItem(item)
@@ -834,14 +836,14 @@ class MainWindow(QMainWindow):
             file_path += ".json"
 
         game_data = {
-            "video_file": self.video_file_path,
+            "video_file": self.game_data.video_file,
             "team_a_name": self.team_a_name.text(),
             "team_b_name": self.team_b_name.text(),
             "team_a_sets_won": self.team_a_sets_won.value(),
             "team_b_sets_won": self.team_b_sets_won.value(),
             "starting_score_a": self.team_a_starting_score.value(),
             "starting_score_b": self.team_b_starting_score.value(),
-            "events": self.events,
+            "events": self.game_data.events,
         }
 
         try:
@@ -1023,10 +1025,10 @@ class MainWindow(QMainWindow):
             self.reset_video_elapsed_time()
             self.video_status_label.setText("Status: Ready")
 
-        self.video_file_path = game_data["video_file"]
+        self.game_data.video_file = game_data["video_file"]
 
         self.video_file_label.setText(
-            f"Video: {os.path.basename(self.video_file_path)}"
+            f"Video: {os.path.basename(self.game_data.video_file)}"
         )
 
         self.team_a_name.setText(game_data["team_a_name"])
@@ -1046,7 +1048,7 @@ class MainWindow(QMainWindow):
             game_data["starting_score_b"]
         )
 
-        self.events = game_data["events"]
+        self.game_data.events = game_data["events"]
         self.added_event_history = []
 
         self.recalculate_scores()
@@ -1068,16 +1070,16 @@ class MainWindow(QMainWindow):
 
         self.initialize_button.setEnabled(False)
 
-        if os.path.exists(self.video_file_path):
+        if os.path.exists(self.game_data.video_file):
             self.media_player.setSource(
-                QUrl.fromLocalFile(self.video_file_path)
+                QUrl.fromLocalFile(self.game_data.video_file)
             )
         else:
             QMessageBox.warning(
                 self,
                 "Video Not Found",
                 f"The video file could not be found:\n\n"
-                f"{self.video_file_path}"
+                f"{self.game_data.video_file}"
             )
 
     def build_score_timeline(self):
@@ -1087,7 +1089,7 @@ class MainWindow(QMainWindow):
         current_score_a = self.team_a_starting_score.value()
         current_score_b = self.team_b_starting_score.value()
 
-        for event in self.events:
+        for event in self.game_data.events:
             if event["team"] == "START":
                 current_score_a = event["score_a"]
                 current_score_b = event["score_b"]
@@ -1174,7 +1176,7 @@ class MainWindow(QMainWindow):
 
     def generate_video(self):
         # Check whether a video has been selected.
-        if not self.video_file_path:
+        if not self.game_data.video_file:
             QMessageBox.warning(
                 self,
                 "No Video",
@@ -1183,7 +1185,7 @@ class MainWindow(QMainWindow):
             return
 
         # Check whether there are any score events.
-        if not self.events:
+        if not self.game_data.events:
             QMessageBox.warning(
                 self,
                 "No Score Events",
@@ -1228,7 +1230,7 @@ class MainWindow(QMainWindow):
             "-y",
             "-nostats",
             "-i",
-            self.video_file_path,
+            self.game_data.video_file,
             "-vf",
             ffmpeg_filter,
             "-c:v",
