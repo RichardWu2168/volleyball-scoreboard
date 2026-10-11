@@ -937,11 +937,8 @@ class MainWindow(QMainWindow):
         # Start FFmpeg asynchronously.
         self.ffmpeg_controller.start(command)
 
-    def update_video_progress(self):
-        output = bytes(
-            self.ffmpeg_controller.process.readAllStandardOutput()
-        ).decode("utf-8", errors="replace")
-
+    def update_video_progress(self, output):
+        # Update the progress display using the output received from FFmpeg.
         self.video_progress.update_progress(
             output,
             self.video_duration_seconds,

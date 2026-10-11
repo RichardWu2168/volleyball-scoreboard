@@ -2,7 +2,7 @@ from PySide6.QtCore import QObject, QProcess, Signal
 
 class FFmpegController(QObject):
     # Signals that MainWindow can connect to.
-    progress_output_received = Signal()
+    progress_output_received = Signal(str)
     process_error_occurred = Signal(object)
     process_finished = Signal(int, object)
 
@@ -17,7 +17,7 @@ class FFmpegController(QObject):
 
         # Connect process signals to the controller's signals and methods.
         self.process.readyReadStandardOutput.connect(
-            self.progress_output_received
+            self.read_progress_output
         )
         self.process.readyReadStandardError.connect(
             self.read_error_output
@@ -45,6 +45,15 @@ class FFmpegController(QObject):
         self.process.setProgram("ffmpeg")
         self.process.setArguments(command)
         self.process.start()
+
+    def read_progress_output(self):
+        # Read FFmpeg progress output.
+        output = bytes(
+            self.process.readAllStandardOutput()
+        ).decode("utf-8", errors="replace")
+
+        # Send the output to the connected handler.
+        self.progress_output_received.emit(output)
 
     def read_error_output(self):
         # Read any available FFmpeg error output.
