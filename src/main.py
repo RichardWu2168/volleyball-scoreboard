@@ -6,10 +6,11 @@ import json
 from game import GameData
 from project import load_game_file, save_game_file
 from scoreboard import Scoreboard
+from video_controller import VideoController
 from video_generator import VideoGenerator
-from video import VideoController
+from video_progress import VideoProgress
 
-from PySide6.QtCore import QUrl, Qt, QProcess, QTimer
+from PySide6.QtCore import QUrl, Qt, QProcess
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -156,6 +157,7 @@ class MainWindow(QMainWindow):
         self.video_elapsed_label = QLabel("Elapsed time: 00:00:00")
         self.video_elapsed_label.setVisible(False)
         self.video_status_label = QLabel("Status: Ready")
+        self.video_progress = VideoProgress(self.video_elapsed_label)
 
         # Video quality selection
         self.video_quality_combo = QComboBox()
@@ -184,11 +186,6 @@ class MainWindow(QMainWindow):
         self.ffmpeg_error_output = ""
         self.ffmpeg_output_buffer = ""
         self.video_duration_seconds = 0
-        self.video_elapsed_timer = QTimer()
-        self.video_elapsed_timer.setInterval(1000)
-        self.video_elapsed_timer.timeout.connect(self.update_video_elapsed_time)
-
-        self.video_generation_start_time = None
 
         self.ffmpeg_process.readyReadStandardOutput.connect(
             self.update_video_progress
@@ -519,7 +516,7 @@ class MainWindow(QMainWindow):
             self.update_team_buttons()
 
         if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
-            self.reset_video_elapsed_time()
+            self.video_progress.reset()
             self.video_status_label.setText("Status: Ready")
 
         self.game_data.video_file = file_path
@@ -795,7 +792,7 @@ class MainWindow(QMainWindow):
 
         # Apply the validated data to the application.
         if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
-            self.reset_video_elapsed_time()
+            self.video_progress.reset()
             self.video_status_label.setText("Status: Ready")
 
         # Update GameData first.
@@ -936,10 +933,7 @@ class MainWindow(QMainWindow):
         self.video_status_label.setText("Status: Generating video...")
 
         # Start the elapsed-time timer.
-        self.video_generation_start_time = time.perf_counter()
-        self.video_elapsed_label.setText("Elapsed time: 00:00:00")
-        self.video_elapsed_label.setVisible(True)
-        self.video_elapsed_timer.start()
+        self.video_progress.start()
 
         # Prevent another generation request while FFmpeg is running.
         self.generate_video_button.setEnabled(False)
@@ -949,28 +943,6 @@ class MainWindow(QMainWindow):
         self.ffmpeg_process.setProgram("ffmpeg")
         self.ffmpeg_process.setArguments(command)
         self.ffmpeg_process.start()
-
-    def update_video_elapsed_time(self):
-        if self.video_generation_start_time is None:
-            return
-
-        elapsed_seconds = int(
-            time.perf_counter() - self.video_generation_start_time
-        )
-
-        hours = elapsed_seconds // 3600
-        minutes = (elapsed_seconds % 3600) // 60
-        seconds = elapsed_seconds % 60
-
-        self.video_elapsed_label.setText(
-            f"Elapsed time: {hours:02d}:{minutes:02d}:{seconds:02d}"
-        )
-
-    def reset_video_elapsed_time(self):
-        self.video_elapsed_timer.stop()
-        self.video_generation_start_time = None
-        self.video_elapsed_label.setText("Elapsed time: 00:00:00")
-        self.video_elapsed_label.setVisible(False)
 
     def update_video_progress(self):
         output = bytes(
@@ -1052,7 +1024,7 @@ class MainWindow(QMainWindow):
         # Handle failure to start FFmpeg.
         if error == QProcess.ProcessError.FailedToStart:
             self.video_status_label.setText("Status: Video generation failed")
-            self.video_elapsed_timer.stop()
+            self.video_progress.stop_timer()
             self.generate_video_button.setEnabled(True)
             self.cancel_video_button.setEnabled(False)
 
@@ -1067,15 +1039,10 @@ class MainWindow(QMainWindow):
 
     def video_generation_finished(self, exit_code, exit_status):
         # Stop the elapsed-time timer.
-        self.video_elapsed_timer.stop()
+        self.video_progress.stop_timer()
 
         # Calculate the total elapsed time.
-        elapsed_seconds = 0
-
-        if self.video_generation_start_time is not None:
-            elapsed_seconds = int(
-                time.perf_counter() - self.video_generation_start_time
-            )
+        elapsed_seconds = self.video_progress.get_elapsed_seconds()
 
         hours = elapsed_seconds // 3600
         minutes = (elapsed_seconds % 3600) // 60
