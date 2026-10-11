@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import json
 
 from game import GameData
 from project import load_game_file, save_game_file
@@ -790,6 +791,7 @@ class MainWindow(QMainWindow):
                 "Load Failed",
                 f"Could not load the game file.\n\n{error}"
             )
+            return
 
         # Apply the validated data to the application.
         if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
