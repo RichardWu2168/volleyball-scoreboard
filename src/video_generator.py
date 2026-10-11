@@ -96,3 +96,33 @@ class VideoGenerator:
             )
 
         return ",".join(filters)
+
+    def build_ffmpeg_command(
+        self,
+        output_file,
+        ffmpeg_filter,
+        video_quality
+    ):
+        #"""Build the FFmpeg arguments for video generation."""
+        return [
+            "-y",
+            "-nostats",
+            "-i",
+            self.game_data.video_file,
+            "-vf",
+            ffmpeg_filter,
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-preset",
+            "medium",
+            "-crf",
+            str(video_quality),
+            "-c:a",
+            "copy",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+            output_file
+        ]

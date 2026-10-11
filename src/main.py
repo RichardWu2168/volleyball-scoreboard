@@ -918,28 +918,11 @@ class MainWindow(QMainWindow):
         ffmpeg_filter = self.video_generator.build_ffmpeg_filter(timeline)
 
         # Prepare the FFmpeg command.
-        command = [
-            "-y",
-            "-nostats",
-            "-i",
-            self.game_data.video_file,
-            "-vf",
+        command = self.video_generator.build_ffmpeg_command(
+            output_file,
             ffmpeg_filter,
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-preset",
-            "medium",
-            "-crf",
-            str(self.video_quality_combo.currentData()),
-            "-c:a",
-            "copy",
-            "-progress",
-            "pipe:1",
-            "-nostats",
-            output_file
-        ]
+            self.video_quality_combo.currentData()
+        )
 
         # Reset the progress bar and error output.
         self.ffmpeg_error_output = ""
