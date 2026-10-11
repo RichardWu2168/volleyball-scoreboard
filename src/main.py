@@ -67,11 +67,13 @@ class MainWindow(QMainWindow):
         self.team_a_score = 0
         self.team_b_score = 0
 
-        self.team_a_name = QLineEdit("Team A")
-        self.team_b_name = QLineEdit("Team B")
+        self.team_a_name = QLineEdit(self.game_data.team_a_name)
+        self.team_b_name = QLineEdit(self.game_data.team_b_name)
 
         self.team_a_starting_score = QSpinBox()
+        self.team_a_starting_score.setValue(self.game_data.starting_score_a)
         self.team_b_starting_score = QSpinBox()
+        self.team_b_starting_score.setValue(self.game_data.starting_score_b)
 
         self.team_a_sets_won_label = QLabel("Sets Won:")
         self.team_b_sets_won_label = QLabel("Sets Won:")
@@ -81,10 +83,12 @@ class MainWindow(QMainWindow):
         self.team_a_sets_won = QSpinBox()
         self.team_a_sets_won.setRange(0, 9)
         self.team_a_sets_won.setValue(0)
+        self.team_a_sets_won.setValue(self.game_data.team_a_sets_won)
 
         self.team_b_sets_won = QSpinBox()
         self.team_b_sets_won.setRange(0, 9)
         self.team_b_sets_won.setValue(0)
+        self.team_b_sets_won.setValue(self.game_data.team_b_sets_won)
 
         self.set_number_label = QLabel("Set #: 1")
         self.set_number_label.setStyleSheet(
@@ -201,8 +205,6 @@ class MainWindow(QMainWindow):
 
         self.team_a_starting_score.valueChanged.connect(self.update_starting_score_labels)
         self.team_b_starting_score.valueChanged.connect(self.update_starting_score_labels)
-        self.team_a_name.textChanged.connect(self.update_score_labels)
-        self.team_b_name.textChanged.connect(self.update_score_labels)
         self.team_a_name.textChanged.connect(self.update_team_buttons)
         self.team_b_name.textChanged.connect(self.update_team_buttons)
 
@@ -364,9 +366,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
     def update_set_number(self):
+        self.game_data.team_a_sets_won = self.team_a_sets_won.value()
+        self.game_data.team_b_sets_won = self.team_b_sets_won.value()
+
         set_number = (
-            self.team_a_sets_won.value()
-            + self.team_b_sets_won.value()
+            self.game_data.team_a_sets_won
+            + self.game_data.team_b_sets_won
             + 1
         )
 
@@ -387,8 +392,12 @@ class MainWindow(QMainWindow):
         # self.update_team_buttons()
 
     def update_starting_score_labels(self):
-        self.team_a_score = self.team_a_starting_score.value()
-        self.team_b_score = self.team_b_starting_score.value()
+        self.game_data.starting_score_a = self.team_a_starting_score.value()
+        self.game_data.starting_score_b = self.team_b_starting_score.value()
+
+        self.team_a_score = self.game_data.starting_score_a
+        self.team_b_score = self.game_data.starting_score_b
+
         self.update_score_labels()
 
     def update_score_labels(self):
@@ -400,26 +409,22 @@ class MainWindow(QMainWindow):
         )
 
     def update_team_buttons(self):
-        self.team_a_label.setText(
-            f"{self.team_a_name.text()}"
-        )
-        self.team_b_label.setText(
-            f"{self.team_b_name.text()}"
-        )        
-        self.team_a_button.setText(
-            f"{self.team_a_name.text()} + 1"
-        )
-        self.team_b_button.setText(
-            f"{self.team_b_name.text()} + 1"
-        )        
+        self.game_data.team_a_name = self.team_a_name.text()
+        self.game_data.team_b_name = self.team_b_name.text()
+
+        self.team_a_label.setText(self.game_data.team_a_name)
+        self.team_b_label.setText(self.game_data.team_b_name)
+
+        self.team_a_button.setText(f"{self.game_data.team_a_name} + 1")
+        self.team_b_button.setText(f"{self.game_data.team_b_name} + 1")
 
     def reset_game_state(self):
         self.game_data.events.clear()
         self.added_event_history.clear()
         self.event_list.clear()
 
-        self.team_a_score = self.team_a_starting_score.value()
-        self.team_b_score = self.team_b_starting_score.value()
+        self.team_a_score = self.game_data.starting_score_a
+        self.team_b_score = self.game_data.starting_score_b
 
         self.update_score_labels()
         self.update_team_buttons()
@@ -546,8 +551,8 @@ class MainWindow(QMainWindow):
             self.added_event_history.clear()
             self.event_list.clear()
 
-            self.team_a_score = self.team_a_starting_score.value()
-            self.team_b_score = self.team_b_starting_score.value()
+            self.team_a_score = self.game_data.starting_score_a
+            self.team_b_score = self.game_data.starting_score_b
 
             self.update_score_labels()
             self.update_team_buttons()
@@ -578,14 +583,14 @@ class MainWindow(QMainWindow):
         if self.game_data.events:
             return
 
-        self.team_a_score = self.team_a_starting_score.value()
-        self.team_b_score = self.team_b_starting_score.value()
+        self.team_a_score = self.game_data.starting_score_a
+        self.team_b_score = self.game_data.starting_score_b
 
         event = {
             "time": 0,
             "team": "START",
-            "score_a": self.team_a_starting_score.value(),
-            "score_b": self.team_b_starting_score.value(),
+            "score_a": self.game_data.starting_score_a,
+            "score_b": self.game_data.starting_score_b,
         }
 
         self.game_data.events.append(event)
@@ -754,15 +759,15 @@ class MainWindow(QMainWindow):
         self.update_score_labels()
     
     def recalculate_scores(self):
-        score_a = self.team_a_starting_score.value()
-        score_b = self.team_b_starting_score.value()
+        score_a = self.game_data.starting_score_a
+        score_b = self.game_data.starting_score_b
 
         self.game_data.events.sort(key=lambda event: event["time"])
 
         for event in self.game_data.events:
             if event["team"] == "START":
-                score_a = self.team_a_starting_score.value()
-                score_b = self.team_b_starting_score.value()
+                score_a = self.game_data.starting_score_a
+                score_b = self.game_data.starting_score_b
 
             elif event["team"] == "A":
                 score_a += 1
@@ -774,16 +779,16 @@ class MainWindow(QMainWindow):
             event["score_b"] = score_b
 
     def get_score_at_time(self, time_ms):
-        score_a = self.team_a_starting_score.value()
-        score_b = self.team_b_starting_score.value()
+        score_a = self.game_data.starting_score_a
+        score_b = self.game_data.starting_score_b
 
         for event in sorted(self.game_data.events, key=lambda e: e["time"]):
             if event["time"] > time_ms:
                 break
 
             if event["team"] == "START":
-                score_a = self.team_a_starting_score.value()
-                score_b = self.team_b_starting_score.value()
+                score_a = self.game_data.starting_score_a
+                score_b = self.game_data.starting_score_b
 
             elif event["team"] == "A":
                 score_a += 1
@@ -802,9 +807,9 @@ class MainWindow(QMainWindow):
             if event["team"] == "START":
                 team_name = "Starting Score"
             elif event["team"] == "A":
-                team_name = self.team_a_name.text()
+                team_name = self.game_data.team_a_name
             else:
-                team_name = self.team_b_name.text()
+                team_name = self.game_data.team_b_name
 
             self.event_list.addItem(
                 f"{time_text}    "
@@ -837,12 +842,12 @@ class MainWindow(QMainWindow):
 
         game_data = {
             "video_file": self.game_data.video_file,
-            "team_a_name": self.team_a_name.text(),
-            "team_b_name": self.team_b_name.text(),
-            "team_a_sets_won": self.team_a_sets_won.value(),
-            "team_b_sets_won": self.team_b_sets_won.value(),
-            "starting_score_a": self.team_a_starting_score.value(),
-            "starting_score_b": self.team_b_starting_score.value(),
+            "team_a_name": self.game_data.team_a_name,
+            "team_b_name": self.game_data.team_b_name,
+            "team_a_sets_won": self.game_data.team_a_sets_won,
+            "team_b_sets_won": self.game_data.team_b_sets_won,
+            "starting_score_a": self.game_data.starting_score_a,
+            "starting_score_b": self.game_data.starting_score_b,
             "events": self.game_data.events,
         }
 
@@ -871,7 +876,7 @@ class MainWindow(QMainWindow):
         # Read and validate the file before modifying the current game.
         try:
             with open(file_path, "r", encoding="utf-8") as file:
-                game_data = json.load(file)
+                saved_data = json.load(file)
 
             required_fields = [
                 "video_file",
@@ -883,17 +888,17 @@ class MainWindow(QMainWindow):
             ]
 
             for field in required_fields:
-                if field not in game_data:
+                if field not in saved_data:
                     raise ValueError(
                         f"Required field '{field}' is missing."
                     )
 
-            if not isinstance(game_data["events"], list):
+            if not isinstance(saved_data["events"], list):
                 raise ValueError("'events' must be a list.")
 
             # Validate starting scores before checking event consistency.
             for field in ("starting_score_a", "starting_score_b"):
-                value = game_data[field]
+                value = saved_data[field]
 
                 if (
                     not isinstance(value, int)
@@ -905,7 +910,7 @@ class MainWindow(QMainWindow):
                     )
 
             # Validate each event's structure and values first.
-            for index, event in enumerate(game_data["events"]):
+            for index, event in enumerate(saved_data["events"]):
                 if not isinstance(event, dict):
                     raise ValueError(
                         f"Event {index + 1} must be an object."
@@ -946,7 +951,7 @@ class MainWindow(QMainWindow):
 
             # A saved game must contain exactly one START event.
             start_event_count = sum(
-                1 for event in game_data["events"]
+                1 for event in saved_data["events"]
                 if event["team"] == "START"
             )
 
@@ -956,18 +961,18 @@ class MainWindow(QMainWindow):
                 )
 
             # Validate event scores in chronological order.
-            expected_score_a = game_data["starting_score_a"]
-            expected_score_b = game_data["starting_score_b"]
+            expected_score_a = saved_data["starting_score_a"]
+            expected_score_b = saved_data["starting_score_b"]
 
             sorted_events = sorted(
-                game_data["events"],
+                saved_data["events"],
                 key=lambda event: event["time"]
             )
 
             for index, event in enumerate(sorted_events):
                 if event["team"] == "START":
-                    expected_score_a = game_data["starting_score_a"]
-                    expected_score_b = game_data["starting_score_b"]
+                    expected_score_a = saved_data["starting_score_a"]
+                    expected_score_b = saved_data["starting_score_b"]
 
                 elif event["team"] == "A":
                     expected_score_a += 1
@@ -984,23 +989,23 @@ class MainWindow(QMainWindow):
                         "match the event history."
                     )
 
-            if not isinstance(game_data["video_file"], str):
+            if not isinstance(saved_data["video_file"], str):
                 raise ValueError("'video_file' must be a string.")
 
             if (
-                not isinstance(game_data["team_a_name"], str)
-                or not game_data["team_a_name"].strip()
+                not isinstance(saved_data["team_a_name"], str)
+                or not saved_data["team_a_name"].strip()
             ):
                 raise ValueError("'team_a_name' must be a non-empty string.")
 
             if (
-                not isinstance(game_data["team_b_name"], str)
-                or not game_data["team_b_name"].strip()
+                not isinstance(saved_data["team_b_name"], str)
+                or not saved_data["team_b_name"].strip()
             ):
                 raise ValueError("'team_b_name' must be a non-empty string.")
 
             for field in ("team_a_sets_won", "team_b_sets_won"):
-                value = game_data.get(field, 0)
+                value = saved_data.get(field, 0)
 
                 if (
                     not isinstance(value, int)
@@ -1025,39 +1030,50 @@ class MainWindow(QMainWindow):
             self.reset_video_elapsed_time()
             self.video_status_label.setText("Status: Ready")
 
-        self.game_data.video_file = game_data["video_file"]
+        # Update GameData first.
+        self.game_data.video_file = saved_data["video_file"]
 
+        self.game_data.team_a_name = saved_data["team_a_name"]
+        self.game_data.team_b_name = saved_data["team_b_name"]
+
+        self.game_data.team_a_sets_won = saved_data.get(
+            "team_a_sets_won", 0
+        )
+        self.game_data.team_b_sets_won = saved_data.get(
+            "team_b_sets_won", 0
+        )
+
+        self.game_data.starting_score_a = saved_data["starting_score_a"]
+        self.game_data.starting_score_b = saved_data["starting_score_b"]
+
+        self.game_data.events = saved_data["events"]
+
+        # Update the UI from GameData.
         self.video_file_label.setText(
             f"Video: {os.path.basename(self.game_data.video_file)}"
         )
 
-        self.team_a_name.setText(game_data["team_a_name"])
-        self.team_b_name.setText(game_data["team_b_name"])
+        self.team_a_name.setText(self.game_data.team_a_name)
+        self.team_b_name.setText(self.game_data.team_b_name)
 
-        self.team_a_sets_won.setValue(
-            game_data.get("team_a_sets_won", 0)
-        )
-        self.team_b_sets_won.setValue(
-            game_data.get("team_b_sets_won", 0)
-        )
+        self.team_a_sets_won.setValue(self.game_data.team_a_sets_won)
+        self.team_b_sets_won.setValue(self.game_data.team_b_sets_won)
 
         self.team_a_starting_score.setValue(
-            game_data["starting_score_a"]
+            self.game_data.starting_score_a
         )
         self.team_b_starting_score.setValue(
-            game_data["starting_score_b"]
+            self.game_data.starting_score_b
         )
 
-        self.game_data.events = game_data["events"]
+        # Reset the undo history for the newly loaded game.
         self.added_event_history = []
 
         self.recalculate_scores()
         self.refresh_event_list()
 
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(
-                self.media_player.position()
-            )
+        self.team_a_score, self.team_b_score = self.get_score_at_time(
+            self.media_player.position()
         )
 
         self.update_score_labels()
@@ -1086,8 +1102,8 @@ class MainWindow(QMainWindow):
         timeline = []
 
         current_time = 0
-        current_score_a = self.team_a_starting_score.value()
-        current_score_b = self.team_b_starting_score.value()
+        current_score_a = self.game_data.starting_score_a
+        current_score_b = self.game_data.starting_score_b
 
         for event in self.game_data.events:
             if event["team"] == "START":
@@ -1136,11 +1152,11 @@ class MainWindow(QMainWindow):
     def build_ffmpeg_filter(self, timeline):
         filters = []
 
-        team_a_name = self.team_a_name.text()
-        team_b_name = self.team_b_name.text()
+        team_a_name = self.game_data.team_a_name
+        team_b_name = self.game_data.team_b_name
 
-        sets_a = self.team_a_sets_won.value()
-        sets_b = self.team_b_sets_won.value()
+        sets_a = self.game_data.team_a_sets_won
+        sets_b = self.game_data.team_b_sets_won
         set_number = sets_a + sets_b + 1
 
         for i, period in enumerate(timeline):
