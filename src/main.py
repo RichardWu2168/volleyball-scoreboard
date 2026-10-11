@@ -188,17 +188,14 @@ class MainWindow(QMainWindow):
         # Create the FFmpeg controller.
         self.ffmpeg_controller = FFmpegController()
 
-        # Connect FFmpeg process signals to the existing handlers.
-        self.ffmpeg_controller.process.readyReadStandardOutput.connect(
+        # Connect the controller's signals to the existing handlers.
+        self.ffmpeg_controller.progress_output_received.connect(
             self.update_video_progress
         )
-        self.ffmpeg_controller.process.readyReadStandardError.connect(
-            self.ffmpeg_controller.read_error_output
-        )
-        self.ffmpeg_controller.process.errorOccurred.connect(
+        self.ffmpeg_controller.process_error_occurred.connect(
             self.ffmpeg_process_error
         )
-        self.ffmpeg_controller.process.finished.connect(
+        self.ffmpeg_controller.process_finished.connect(
             self.video_generation_finished
         )
 
