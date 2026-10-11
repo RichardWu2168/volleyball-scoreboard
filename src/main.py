@@ -9,6 +9,7 @@ from scoreboard import Scoreboard
 from video_controller import VideoController
 from video_generator import VideoGenerator
 from video_progress import VideoProgress
+from ffmpeg_controller import FFmpegController
 
 from PySide6.QtCore import QUrl, Qt, QProcess
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -182,24 +183,23 @@ class MainWindow(QMainWindow):
         )
 
         self.video_generation_cancelled = False
-        self.ffmpeg_process = QProcess(self)
-        self.ffmpeg_error_output = ""
         self.video_duration_seconds = 0
 
-        self.ffmpeg_process.readyReadStandardOutput.connect(
+        # Create the FFmpeg controller.
+        self.ffmpeg_controller = FFmpegController()
+
+        # Connect FFmpeg process signals to the existing handlers.
+        self.ffmpeg_controller.process.readyReadStandardOutput.connect(
             self.update_video_progress
         )
-
-        self.ffmpeg_process.readyReadStandardError.connect(
-            self.read_ffmpeg_error
+        self.ffmpeg_controller.process.readyReadStandardError.connect(
+            self.ffmpeg_controller.read_error_output
         )
-
-        self.ffmpeg_process.finished.connect(
-            self.video_generation_finished
-        )
-
-        self.ffmpeg_process.errorOccurred.connect(
+        self.ffmpeg_controller.process.errorOccurred.connect(
             self.ffmpeg_process_error
+        )
+        self.ffmpeg_controller.process.finished.connect(
+            self.video_generation_finished
         )
 
         self.initialize_button.clicked.connect(self.initialize_scores)
@@ -514,7 +514,7 @@ class MainWindow(QMainWindow):
             self.update_score_labels()
             self.update_team_buttons()
 
-        if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
+        if self.ffmpeg_controller.process.state() == QProcess.ProcessState.NotRunning:
             self.video_progress.reset()
             self.video_status_label.setText("Status: Ready")
 
@@ -790,7 +790,7 @@ class MainWindow(QMainWindow):
             return
 
         # Apply the validated data to the application.
-        if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
+        if self.ffmpeg_controller.process.state() == QProcess.ProcessState.NotRunning:
             self.video_progress.reset()
             self.video_status_label.setText("Status: Ready")
 
@@ -923,7 +923,6 @@ class MainWindow(QMainWindow):
         )
 
         # Reset the progress bar and error output.
-        self.ffmpeg_error_output = ""
         self.video_progress.output_buffer = ""
         self.video_generation_cancelled = False
         self.video_progress_bar.setValue(0)
@@ -939,13 +938,11 @@ class MainWindow(QMainWindow):
         self.cancel_video_button.setEnabled(True)
 
         # Start FFmpeg asynchronously.
-        self.ffmpeg_process.setProgram("ffmpeg")
-        self.ffmpeg_process.setArguments(command)
-        self.ffmpeg_process.start()
+        self.ffmpeg_controller.start(command)
 
     def update_video_progress(self):
         output = bytes(
-            self.ffmpeg_process.readAllStandardOutput()
+            self.ffmpeg_controller.process.readAllStandardOutput()
         ).decode("utf-8", errors="replace")
 
         self.video_progress.update_progress(
@@ -954,15 +951,8 @@ class MainWindow(QMainWindow):
             self.video_progress_bar,
         )
 
-    def read_ffmpeg_error(self):
-        error = bytes(
-            self.ffmpeg_process.readAllStandardError()
-        ).decode("utf-8", errors="replace")
-
-        self.ffmpeg_error_output += error
-
     def cancel_video_generation(self):
-        if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
+        if (self.ffmpeg_controller.process.state() == QProcess.ProcessState.NotRunning):
             return
 
         reply = QMessageBox.question(
@@ -976,7 +966,7 @@ class MainWindow(QMainWindow):
 
         if reply == QMessageBox.StandardButton.Yes:
             self.video_generation_cancelled = True
-            self.ffmpeg_process.kill()
+            self.ffmpeg_controller.kill()
 
     def ffmpeg_process_error(self, error):
         # Handle failure to start FFmpeg.
@@ -1066,12 +1056,12 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Video Generation Failed",
-                f"{self.ffmpeg_error_output or 'FFmpeg could not generate the video.'}\n\n"
+                f"{self.ffmpeg_controller.error_output or 'FFmpeg could not generate the video.'}\n\n"
                 f"Elapsed time: {elapsed_text}"
             )
 
     def closeEvent(self, event):
-        if self.ffmpeg_process.state() != QProcess.ProcessState.NotRunning:
+        if self.ffmpeg_controller.process.state() != QProcess.ProcessState.NotRunning:
             QMessageBox.warning(
                 self,
                 "Video Generation in Progress",
