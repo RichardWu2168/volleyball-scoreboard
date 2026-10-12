@@ -38,11 +38,35 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        # Initialize application data and controllers.
+        self.initialize_application_state()
+
+        # Create the user interface.
+        self.create_widgets()
+
+        # Connect widget signals to their handlers.
+        self.connect_signals()
+
+        # Build the application layout.
+        self.create_layout()
+
+    def initialize_application_state(self):
+        # Initialize game data and related components.
         self.game_data = GameData()
         self.scoreboard = Scoreboard(self.game_data)
         self.video_generator = VideoGenerator(self.game_data)
         self.video_controller = VideoController(self)
 
+        # Initialize application state.
+        self.added_event_history = []
+        self.team_a_score = 0
+        self.team_b_score = 0
+        self.video_generation_cancelled = False
+        self.video_duration_seconds = 0        
+
+    def create_widgets(self):
+        # Move the existing widget creation and configuration code here.
+        self.setWindowTitle("Volleyball Scoreboard")
         self.video_file_label = QLabel("No video loaded")
 
         self.video_widget = QVideoWidget()
@@ -57,30 +81,12 @@ class MainWindow(QMainWindow):
         self.rewind_button = QPushButton("-10 sec")
         self.forward_button = QPushButton("+10 sec")
 
-        self.media_player = QMediaPlayer()
-        self.media_player.positionChanged.connect(
-            self.video_controller.position_changed
-        )
-        self.media_player.durationChanged.connect(
-            self.video_controller.duration_changed
-        )
-        self.media_player.playbackStateChanged.connect(
-            self.video_controller.playback_state_changed
-        )
-
         self.audio_output = QAudioOutput()
+        self.media_player = QMediaPlayer()
         self.media_player.setAudioOutput(self.audio_output)
-
         self.media_player.setVideoOutput(self.video_widget)
 
-        self.setWindowTitle("Volleyball Scoreboard")
-
-        self.added_event_history = []
         self.event_list = QListWidget()
-
-        self.team_a_score = 0
-        self.team_b_score = 0
-
         self.team_a_name = QLineEdit(self.game_data.team_a_name)
         self.team_b_name = QLineEdit(self.game_data.team_b_name)
 
@@ -90,18 +96,16 @@ class MainWindow(QMainWindow):
         self.team_b_starting_score.setValue(self.game_data.starting_score_b)
 
         self.team_a_sets_won_label = QLabel("Sets Won:")
-        self.team_b_sets_won_label = QLabel("Sets Won:")
         self.team_a_sets_won_label.setAlignment(Qt.AlignCenter)
+        self.team_b_sets_won_label = QLabel("Sets Won:")
         self.team_b_sets_won_label.setAlignment(Qt.AlignCenter)
 
         self.team_a_sets_won = QSpinBox()
         self.team_a_sets_won.setRange(0, 9)
-        self.team_a_sets_won.setValue(0)
         self.team_a_sets_won.setValue(self.game_data.team_a_sets_won)
 
         self.team_b_sets_won = QSpinBox()
         self.team_b_sets_won.setRange(0, 9)
-        self.team_b_sets_won.setValue(0)
         self.team_b_sets_won.setValue(self.game_data.team_b_sets_won)
 
         self.set_number_label = QLabel("Set #: 1")
@@ -113,23 +117,23 @@ class MainWindow(QMainWindow):
         self.team_b_starting_score.setRange(0, 99)
 
         self.team_a_label = QLabel("Team A")
-        self.team_b_label = QLabel("Team B")
         self.team_a_label.setAlignment(Qt.AlignCenter)
-        self.team_b_label.setAlignment(Qt.AlignCenter)
         self.team_a_label.setStyleSheet(
             "font-size: 12pt; font-weight: bold;"
         )
+        self.team_b_label = QLabel("Team B")
+        self.team_b_label.setAlignment(Qt.AlignCenter)
         self.team_b_label.setStyleSheet(
             "font-size: 12pt; font-weight: bold;"
         )
 
         self.team_a_score_label = QLabel("0")
-        self.team_b_score_label = QLabel("0")
         self.team_a_score_label.setAlignment(Qt.AlignCenter)
-        self.team_b_score_label.setAlignment(Qt.AlignCenter)
         self.team_a_score_label.setStyleSheet(
             "font-size: 48pt; font-weight: bold;"
         )
+        self.team_b_score_label = QLabel("0")
+        self.team_b_score_label.setAlignment(Qt.AlignCenter)
         self.team_b_score_label.setStyleSheet(
             "font-size: 48pt; font-weight: bold;"
         )
@@ -155,10 +159,21 @@ class MainWindow(QMainWindow):
         self.video_progress_bar.setValue(0)
         self.video_progress_bar.setFormat("Ready")
         self.video_progress_bar.setVisible(True)
+        # Make the progress bar more noticeable.
+        self.video_progress_bar.setStyleSheet(
+            "QProgressBar {"
+            "    border: none;"
+            "    text-align: center;"
+            "}"
+            "QProgressBar::chunk {"
+            "    background-color: #05B8CC;"
+            "}"
+        )
+
         self.video_elapsed_label = QLabel("Elapsed time: 00:00:00")
         self.video_elapsed_label.setVisible(False)
-        self.video_status_label = QLabel("Status: Ready")
         self.video_progress = VideoProgress(self.video_elapsed_label)
+        self.video_status_label = QLabel("Status: Ready")
 
         # Video quality selection
         self.video_quality_combo = QComboBox()
@@ -170,23 +185,20 @@ class MainWindow(QMainWindow):
         # Use CRF 18 as the default.
         self.video_quality_combo.setCurrentIndex(1)
 
-        # Make the progress bar more noticeable.
-
-        self.video_progress_bar.setStyleSheet(
-            "QProgressBar {"
-            "    border: none;"
-            "    text-align: center;"
-            "}"
-            "QProgressBar::chunk {"
-            "    background-color: #05B8CC;"
-            "}"
-        )
-
-        self.video_generation_cancelled = False
-        self.video_duration_seconds = 0
-
         # Create the FFmpeg controller.
         self.ffmpeg_controller = FFmpegController()
+
+    def connect_signals(self):
+        # Connect signals for video playback and progress updates.
+        self.media_player.positionChanged.connect(
+            self.video_controller.position_changed
+        )
+        self.media_player.durationChanged.connect(
+            self.video_controller.duration_changed
+        )
+        self.media_player.playbackStateChanged.connect(
+            self.video_controller.playback_state_changed
+        )
 
         # Connect the controller's signals to the existing handlers.
         self.ffmpeg_controller.progress_output_received.connect(
@@ -228,6 +240,7 @@ class MainWindow(QMainWindow):
         self.team_a_sets_won.valueChanged.connect(self.update_set_number)
         self.team_b_sets_won.valueChanged.connect(self.update_set_number)
 
+    def create_layout(self):
         # Main layout
         main_layout = QHBoxLayout()
 
@@ -342,13 +355,17 @@ class MainWindow(QMainWindow):
         # Video quality selection
         quality_layout = QHBoxLayout()
         quality_layout.addWidget(QLabel("Video Quality:"), 1)
-        quality_layout.addWidget(self.video_quality_combo, 3)
+        quality_layout.addWidget(self.video_quality_combo, 2)
 
         right_layout.addLayout(quality_layout)
 
-        # Generate Video button
-        right_layout.addWidget(self.generate_video_button)
-        right_layout.addWidget(self.cancel_video_button)
+        # Create a horizontal layout for video generation controls.
+        video_generation_layout = QHBoxLayout()
+        video_generation_layout.addWidget(self.generate_video_button)
+        video_generation_layout.addWidget(self.cancel_video_button)
+
+        # Add the controls to the right layout.
+        right_layout.addLayout(video_generation_layout)
 
         # Video generation progress
         right_layout.addWidget(self.video_status_label)
@@ -368,8 +385,8 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
 
-        self.setCentralWidget(central_widget)
-
+        self.setCentralWidget(central_widget)        
+        
     def update_set_number(self):
         self.game_data.team_a_sets_won = self.team_a_sets_won.value()
         self.game_data.team_b_sets_won = self.team_b_sets_won.value()
@@ -598,20 +615,6 @@ class MainWindow(QMainWindow):
 
     def team_b_button_clicked(self):
         self.record_point("B")
-
-#    def refresh_scores_and_events(self):
-        # Recalculate scores and refresh the event list.
- #       self.scoreboard.recalculate_scores()
-  #      self.refresh_event_list()
-
-        # Display the score at the current video timestamp.
-   #     current_time = self.media_player.position()
-
-    #    self.team_a_score, self.team_b_score = (
-     #       self.scoreboard.get_score_at_time(current_time)
-      #  )
-
-       # self.update_score_labels()
 
     def refresh_scores_and_events(self):
         # Recalculate scores after an event is removed.
