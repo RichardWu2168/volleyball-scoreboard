@@ -600,21 +600,25 @@ class MainWindow(QMainWindow):
         self.record_point("B")
 
     def undo_last_score(self):
+        # Return if there are no scoring events to undo.
         if not self.added_event_history:
             return
 
-        event = self.added_event_history[-1]
+        # Remove the latest event from the Undo history.
+        event = self.added_event_history.pop()
 
+        # Return if the event is no longer in the game.
         if event not in self.game_data.events:
-            self.added_event_history.pop()
             return
 
-        self.added_event_history.pop()
+        # Remove the event from the game.
         self.game_data.events.remove(event)
 
+        # Recalculate scores and refresh the event list.
         self.scoreboard.recalculate_scores()
         self.refresh_event_list()
 
+        # Display the score at the current video timestamp.
         current_time = self.media_player.position()
 
         self.team_a_score, self.team_b_score = (
@@ -622,7 +626,7 @@ class MainWindow(QMainWindow):
         )
 
         self.update_score_labels()
-        
+
     def delete_selected_event(self):
         selected_row = self.event_list.currentRow()
 
