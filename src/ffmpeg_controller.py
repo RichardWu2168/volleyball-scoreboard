@@ -1,4 +1,8 @@
+import ctypes
+import sys
+
 from PySide6.QtCore import QObject, QProcess, Signal
+
 
 class FFmpegController(QObject):
     # Signals that MainWindow can connect to.
@@ -15,6 +19,10 @@ class FFmpegController(QObject):
         # Store FFmpeg error output for troubleshooting.
         self.error_output = ""
 
+        # Track whether this controller has requested that Windows
+        # prevent the computer from entering sleep mode.
+        self.sleep_prevention_active = False
+
         # Connect process signals to the controller's signals and methods.
         self.process.readyReadStandardOutput.connect(
             self.read_progress_output
@@ -29,7 +37,43 @@ class FFmpegController(QObject):
             self._handle_process_finished
         )
 
+    def prevent_system_sleep(self):
+        # This feature applies only to Windows.
+        if sys.platform != "win32":
+            return
+
+        # Keep Windows awake while allowing the display to turn off.
+        ES_CONTINUOUS = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+
+        result = ctypes.windll.kernel32.SetThreadExecutionState(
+            ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+        )
+
+        if result:
+            self.sleep_prevention_active = True
+
+    def restore_system_sleep(self):
+        # Do nothing if sleep prevention was not activated.
+        if not self.sleep_prevention_active:
+            return
+
+        try:
+            if sys.platform == "win32":
+                # Restore the normal Windows power behavior.
+                ES_CONTINUOUS = 0x80000000
+
+                ctypes.windll.kernel32.SetThreadExecutionState(
+                    ES_CONTINUOUS
+                )
+        finally:
+            self.sleep_prevention_active = False
+
     def _handle_process_error(self, error):
+        # Release the sleep prevention request if FFmpeg cannot start.
+        if error == QProcess.ProcessError.FailedToStart:
+            self.restore_system_sleep()
+
         # Forward the process error through the controller's signal.
         self.process_error_occurred.emit(error)
 
@@ -56,6 +100,10 @@ class FFmpegController(QObject):
         return "An unknown FFmpeg process error occurred."
 
     def _handle_process_finished(self, exit_code, exit_status):
+        # Restore normal power behavior when FFmpeg finishes,
+        # fails, or is terminated.
+        self.restore_system_sleep()
+
         # Forward the process completion through the controller's signal.
         self.process_finished.emit(exit_code, exit_status)
 
@@ -66,6 +114,9 @@ class FFmpegController(QObject):
 
         # Clear errors from the previous generation.
         self.error_output = ""
+
+        # Prevent sleep before starting FFmpeg.
+        self.prevent_system_sleep()
 
         # Start FFmpeg asynchronously.
         self.process.setProgram("ffmpeg")

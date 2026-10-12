@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 import json
 
 from game import GameData
@@ -11,6 +10,7 @@ from video_generator import VideoGenerator
 from video_progress import VideoProgress
 from ffmpeg_controller import FFmpegController
 
+from PySide6.QtGui import QIcon
 from PySide6.QtCore import QUrl, Qt, QProcess
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
     def create_widgets(self):
         # Move the existing widget creation and configuration code here.
         self.setWindowTitle("Volleyball Scoreboard")
+        self.setWindowIcon(QIcon(self.get_resource_path("Volleyball.png")))
         self.video_file_label = QLabel("No video loaded")
 
         self.video_widget = QVideoWidget()
@@ -386,7 +387,15 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(main_layout)
 
         self.setCentralWidget(central_widget)        
-        
+
+    def get_resource_path(self, filename):
+        if getattr(sys, "frozen", False):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        return os.path.join(base_path, filename)
+
     def update_set_number(self):
         self.game_data.team_a_sets_won = self.team_a_sets_won.value()
         self.game_data.team_b_sets_won = self.team_b_sets_won.value()
