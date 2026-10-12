@@ -990,13 +990,7 @@ class MainWindow(QMainWindow):
         self.video_progress.stop_timer()
 
         # Calculate the total elapsed time.
-        elapsed_seconds = self.video_progress.get_elapsed_seconds()
-
-        hours = elapsed_seconds // 3600
-        minutes = (elapsed_seconds % 3600) // 60
-        seconds = elapsed_seconds % 60
-
-        elapsed_text = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        elapsed_seconds = elapsed_text = self.video_progress.get_elapsed_time_text()
 
         self.generate_video_button.setEnabled(True)
         self.cancel_video_button.setEnabled(False)

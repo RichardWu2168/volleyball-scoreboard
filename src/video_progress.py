@@ -6,6 +6,7 @@ class VideoProgress:
     def __init__(self, elapsed_label):
         self.elapsed_label = elapsed_label
         self.start_time = None
+        self.output_buffer = ""
 
         self.timer = QTimer()
         self.timer.setInterval(1000)
@@ -97,3 +98,14 @@ class VideoProgress:
 
                     except ValueError:
                         pass
+
+    def get_elapsed_time_text(self):
+        # Get the elapsed time in seconds.
+        elapsed_seconds = self.get_elapsed_seconds()
+
+        # Convert seconds into hours, minutes, and seconds.
+        hours = elapsed_seconds // 3600
+        minutes = (elapsed_seconds % 3600) // 60
+        seconds = elapsed_seconds % 60
+
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
