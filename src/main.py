@@ -839,13 +839,8 @@ class MainWindow(QMainWindow):
         self.update_score_labels()
         self.update_team_buttons()
 
-        self.team_a_name.setEnabled(False)
-        self.team_b_name.setEnabled(False)
-        self.team_a_starting_score.setEnabled(False)
-        self.team_b_starting_score.setEnabled(False)
-
-        self.initialize_button.setEnabled(False)
-
+        self.set_game_setup_enabled(False)
+        
         if os.path.exists(self.game_data.video_file):
             self.media_player.setSource(
                 QUrl.fromLocalFile(self.game_data.video_file)
