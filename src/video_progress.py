@@ -45,9 +45,16 @@ class VideoProgress:
         self.timer.stop()
 
     def reset(self):
+        # Stop the elapsed-time timer.
         self.timer.stop()
+
+        # Reset the elapsed-time tracking.
         self.start_time = None
 
+        # Clear any incomplete FFmpeg progress output.
+        self.output_buffer = ""
+
+        # Reset and hide the elapsed-time label.
         self.elapsed_label.setText("Elapsed time: 00:00:00")
         self.elapsed_label.setVisible(False)
 

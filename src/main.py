@@ -919,10 +919,13 @@ class MainWindow(QMainWindow):
             self.video_quality_combo.currentData()
         )
 
-        # Reset the progress bar and error output.
-        self.video_progress.output_buffer = ""
+        # Reset the progress tracking state.
+        self.video_progress.reset()
         self.video_generation_cancelled = False
+
+        # Reset the progress bar.
         self.video_progress_bar.setValue(0)
+
         self.video_progress_bar.setFormat("Generating video: 0%")
         self.video_progress_bar.setVisible(True)
         self.video_status_label.setText("Status: Generating video...")
@@ -990,7 +993,7 @@ class MainWindow(QMainWindow):
         self.video_progress.stop_timer()
 
         # Calculate the total elapsed time.
-        elapsed_seconds = elapsed_text = self.video_progress.get_elapsed_time_text()
+        elapsed_text = self.video_progress.get_elapsed_time_text()
 
         self.generate_video_button.setEnabled(True)
         self.cancel_video_button.setEnabled(False)

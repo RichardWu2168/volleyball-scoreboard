@@ -60,6 +60,10 @@ class FFmpegController(QObject):
         self.process_finished.emit(exit_code, exit_status)
 
     def start(self, command):
+        # Do not start FFmpeg if it is already running.
+        if self.is_running():
+            return False
+
         # Clear errors from the previous generation.
         self.error_output = ""
 
@@ -67,6 +71,8 @@ class FFmpegController(QObject):
         self.process.setProgram("ffmpeg")
         self.process.setArguments(command)
         self.process.start()
+
+        return True
 
     def read_progress_output(self):
         # Read FFmpeg progress output.
