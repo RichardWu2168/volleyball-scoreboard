@@ -511,7 +511,7 @@ class MainWindow(QMainWindow):
             self.update_score_labels()
             self.update_team_buttons()
 
-        if self.ffmpeg_controller.process.state() == QProcess.ProcessState.NotRunning:
+        if not self.ffmpeg_controller.is_running():
             self.video_progress.reset()
             self.video_status_label.setText("Status: Ready")
 
@@ -787,7 +787,7 @@ class MainWindow(QMainWindow):
             return
 
         # Apply the validated data to the application.
-        if self.ffmpeg_controller.process.state() == QProcess.ProcessState.NotRunning:
+        if not self.ffmpeg_controller.is_running():
             self.video_progress.reset()
             self.video_status_label.setText("Status: Ready")
 
