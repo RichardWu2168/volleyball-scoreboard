@@ -1,10 +1,17 @@
-import json
-import math
 import os
 import sys
 import time
+import json
 
-from PySide6.QtCore import QUrl, Qt, QProcess, QTimer
+from game import GameData
+from project import load_game_file, save_game_file
+from scoreboard import Scoreboard
+from video_controller import VideoController
+from video_generator import VideoGenerator
+from video_progress import VideoProgress
+from ffmpeg_controller import FFmpegController
+
+from PySide6.QtCore import QUrl, Qt, QProcess
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -31,7 +38,35 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.video_file_path = ""
+        # Initialize application data and controllers.
+        self.initialize_application_state()
+
+        # Create the user interface.
+        self.create_widgets()
+
+        # Connect widget signals to their handlers.
+        self.connect_signals()
+
+        # Build the application layout.
+        self.create_layout()
+
+    def initialize_application_state(self):
+        # Initialize game data and related components.
+        self.game_data = GameData()
+        self.scoreboard = Scoreboard(self.game_data)
+        self.video_generator = VideoGenerator(self.game_data)
+        self.video_controller = VideoController(self)
+
+        # Initialize application state.
+        self.added_event_history = []
+        self.team_a_score = 0
+        self.team_b_score = 0
+        self.video_generation_cancelled = False
+        self.video_duration_seconds = 0        
+
+    def create_widgets(self):
+        # Move the existing widget creation and configuration code here.
+        self.setWindowTitle("Volleyball Scoreboard")
         self.video_file_label = QLabel("No video loaded")
 
         self.video_widget = QVideoWidget()
@@ -46,43 +81,32 @@ class MainWindow(QMainWindow):
         self.rewind_button = QPushButton("-10 sec")
         self.forward_button = QPushButton("+10 sec")
 
-        self.media_player = QMediaPlayer()
-        self.media_player.positionChanged.connect(self.position_changed)
-        self.media_player.durationChanged.connect(self.duration_changed)
-        self.media_player.playbackStateChanged.connect(self.playback_state_changed)
-
         self.audio_output = QAudioOutput()
+        self.media_player = QMediaPlayer()
         self.media_player.setAudioOutput(self.audio_output)
-
         self.media_player.setVideoOutput(self.video_widget)
 
-        self.setWindowTitle("Volleyball Scoreboard")
-        
-        self.events = []
-        self.added_event_history = []
         self.event_list = QListWidget()
-
-        self.team_a_score = 0
-        self.team_b_score = 0
-
-        self.team_a_name = QLineEdit("Team A")
-        self.team_b_name = QLineEdit("Team B")
+        self.team_a_name = QLineEdit(self.game_data.team_a_name)
+        self.team_b_name = QLineEdit(self.game_data.team_b_name)
 
         self.team_a_starting_score = QSpinBox()
+        self.team_a_starting_score.setValue(self.game_data.starting_score_a)
         self.team_b_starting_score = QSpinBox()
+        self.team_b_starting_score.setValue(self.game_data.starting_score_b)
 
         self.team_a_sets_won_label = QLabel("Sets Won:")
-        self.team_b_sets_won_label = QLabel("Sets Won:")
         self.team_a_sets_won_label.setAlignment(Qt.AlignCenter)
+        self.team_b_sets_won_label = QLabel("Sets Won:")
         self.team_b_sets_won_label.setAlignment(Qt.AlignCenter)
 
         self.team_a_sets_won = QSpinBox()
         self.team_a_sets_won.setRange(0, 9)
-        self.team_a_sets_won.setValue(0)
+        self.team_a_sets_won.setValue(self.game_data.team_a_sets_won)
 
         self.team_b_sets_won = QSpinBox()
         self.team_b_sets_won.setRange(0, 9)
-        self.team_b_sets_won.setValue(0)
+        self.team_b_sets_won.setValue(self.game_data.team_b_sets_won)
 
         self.set_number_label = QLabel("Set #: 1")
         self.set_number_label.setStyleSheet(
@@ -93,23 +117,23 @@ class MainWindow(QMainWindow):
         self.team_b_starting_score.setRange(0, 99)
 
         self.team_a_label = QLabel("Team A")
-        self.team_b_label = QLabel("Team B")
         self.team_a_label.setAlignment(Qt.AlignCenter)
-        self.team_b_label.setAlignment(Qt.AlignCenter)
         self.team_a_label.setStyleSheet(
             "font-size: 12pt; font-weight: bold;"
         )
+        self.team_b_label = QLabel("Team B")
+        self.team_b_label.setAlignment(Qt.AlignCenter)
         self.team_b_label.setStyleSheet(
             "font-size: 12pt; font-weight: bold;"
         )
 
         self.team_a_score_label = QLabel("0")
-        self.team_b_score_label = QLabel("0")
         self.team_a_score_label.setAlignment(Qt.AlignCenter)
-        self.team_b_score_label.setAlignment(Qt.AlignCenter)
         self.team_a_score_label.setStyleSheet(
             "font-size: 48pt; font-weight: bold;"
         )
+        self.team_b_score_label = QLabel("0")
+        self.team_b_score_label.setAlignment(Qt.AlignCenter)
         self.team_b_score_label.setStyleSheet(
             "font-size: 48pt; font-weight: bold;"
         )
@@ -135,8 +159,20 @@ class MainWindow(QMainWindow):
         self.video_progress_bar.setValue(0)
         self.video_progress_bar.setFormat("Ready")
         self.video_progress_bar.setVisible(True)
+        # Make the progress bar more noticeable.
+        self.video_progress_bar.setStyleSheet(
+            "QProgressBar {"
+            "    border: none;"
+            "    text-align: center;"
+            "}"
+            "QProgressBar::chunk {"
+            "    background-color: #05B8CC;"
+            "}"
+        )
+
         self.video_elapsed_label = QLabel("Elapsed time: 00:00:00")
         self.video_elapsed_label.setVisible(False)
+        self.video_progress = VideoProgress(self.video_elapsed_label)
         self.video_status_label = QLabel("Status: Ready")
 
         # Video quality selection
@@ -149,60 +185,45 @@ class MainWindow(QMainWindow):
         # Use CRF 18 as the default.
         self.video_quality_combo.setCurrentIndex(1)
 
-        # Make the progress bar more noticeable.
+        # Create the FFmpeg controller.
+        self.ffmpeg_controller = FFmpegController()
 
-        self.video_progress_bar.setStyleSheet(
-            "QProgressBar {"
-            "    border: none;"
-            "    text-align: center;"
-            "}"
-            "QProgressBar::chunk {"
-            "    background-color: #05B8CC;"
-            "}"
+    def connect_signals(self):
+        # Connect signals for video playback and progress updates.
+        self.media_player.positionChanged.connect(
+            self.video_controller.position_changed
+        )
+        self.media_player.durationChanged.connect(
+            self.video_controller.duration_changed
+        )
+        self.media_player.playbackStateChanged.connect(
+            self.video_controller.playback_state_changed
         )
 
-        self.video_generation_cancelled = False
-        self.ffmpeg_process = QProcess(self)
-        self.ffmpeg_error_output = ""
-        self.ffmpeg_output_buffer = ""
-        self.video_duration_seconds = 0
-        self.video_elapsed_timer = QTimer()
-        self.video_elapsed_timer.setInterval(1000)
-        self.video_elapsed_timer.timeout.connect(self.update_video_elapsed_time)
-
-        self.video_generation_start_time = None
-
-        self.ffmpeg_process.readyReadStandardOutput.connect(
+        # Connect the controller's signals to the existing handlers.
+        self.ffmpeg_controller.progress_output_received.connect(
             self.update_video_progress
         )
-
-        self.ffmpeg_process.readyReadStandardError.connect(
-            self.read_ffmpeg_error
-        )
-
-        self.ffmpeg_process.finished.connect(
-            self.video_generation_finished
-        )
-
-        self.ffmpeg_process.errorOccurred.connect(
+        self.ffmpeg_controller.process_error_occurred.connect(
             self.ffmpeg_process_error
+        )
+        self.ffmpeg_controller.process_finished.connect(
+            self.video_generation_finished
         )
 
         self.initialize_button.clicked.connect(self.initialize_scores)
 
         self.open_video_button.clicked.connect(self.open_video)    
-        self.play_button.clicked.connect(self.play_pause)
-        self.rewind_button.clicked.connect(self.rewind)
-        self.forward_button.clicked.connect(self.forward)
-        self.position_slider.sliderMoved.connect(self.seek)
-        self.position_slider.sliderPressed.connect(self.seek_from_slider)
+        self.play_button.clicked.connect(self.video_controller.play_pause)
+        self.rewind_button.clicked.connect(self.video_controller.rewind)
+        self.forward_button.clicked.connect(self.video_controller.forward)
+        self.position_slider.sliderMoved.connect(self.video_controller.seek)
+        self.position_slider.sliderPressed.connect(self.video_controller.seek_from_slider)
 
         self.team_a_starting_score.valueChanged.connect(self.update_starting_score_labels)
         self.team_b_starting_score.valueChanged.connect(self.update_starting_score_labels)
-        self.team_a_name.textChanged.connect(self.update_score_labels)
-        self.team_b_name.textChanged.connect(self.update_score_labels)
-        self.team_a_name.textChanged.connect(self.update_team_buttons)
-        self.team_b_name.textChanged.connect(self.update_team_buttons)
+        self.team_a_name.textChanged.connect(self.update_team_a_button)
+        self.team_b_name.textChanged.connect(self.update_team_b_button)
 
         self.team_a_button.clicked.connect(self.team_a_button_clicked)
         self.team_b_button.clicked.connect(self.team_b_button_clicked)
@@ -219,6 +240,7 @@ class MainWindow(QMainWindow):
         self.team_a_sets_won.valueChanged.connect(self.update_set_number)
         self.team_b_sets_won.valueChanged.connect(self.update_set_number)
 
+    def create_layout(self):
         # Main layout
         main_layout = QHBoxLayout()
 
@@ -333,13 +355,17 @@ class MainWindow(QMainWindow):
         # Video quality selection
         quality_layout = QHBoxLayout()
         quality_layout.addWidget(QLabel("Video Quality:"), 1)
-        quality_layout.addWidget(self.video_quality_combo, 3)
+        quality_layout.addWidget(self.video_quality_combo, 2)
 
         right_layout.addLayout(quality_layout)
 
-        # Generate Video button
-        right_layout.addWidget(self.generate_video_button)
-        right_layout.addWidget(self.cancel_video_button)
+        # Create a horizontal layout for video generation controls.
+        video_generation_layout = QHBoxLayout()
+        video_generation_layout.addWidget(self.generate_video_button)
+        video_generation_layout.addWidget(self.cancel_video_button)
+
+        # Add the controls to the right layout.
+        right_layout.addLayout(video_generation_layout)
 
         # Video generation progress
         right_layout.addWidget(self.video_status_label)
@@ -359,12 +385,15 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
 
-        self.setCentralWidget(central_widget)
-
+        self.setCentralWidget(central_widget)        
+        
     def update_set_number(self):
+        self.game_data.team_a_sets_won = self.team_a_sets_won.value()
+        self.game_data.team_b_sets_won = self.team_b_sets_won.value()
+
         set_number = (
-            self.team_a_sets_won.value()
-            + self.team_b_sets_won.value()
+            self.game_data.team_a_sets_won
+            + self.game_data.team_b_sets_won
             + 1
         )
 
@@ -374,7 +403,7 @@ class MainWindow(QMainWindow):
 
     def event_selected(self, item):
         row = self.event_list.row(item)
-        event = self.events[row]
+        event = self.game_data.events[row]
 
         self.media_player.setPosition(event["time"])
 
@@ -382,11 +411,14 @@ class MainWindow(QMainWindow):
         self.team_b_score = event["score_b"]
 
         self.update_score_labels()
-        # self.update_team_buttons()
 
     def update_starting_score_labels(self):
-        self.team_a_score = self.team_a_starting_score.value()
-        self.team_b_score = self.team_b_starting_score.value()
+        self.game_data.starting_score_a = self.team_a_starting_score.value()
+        self.game_data.starting_score_b = self.team_b_starting_score.value()
+
+        self.team_a_score = self.game_data.starting_score_a
+        self.team_b_score = self.game_data.starting_score_b
+
         self.update_score_labels()
 
     def update_score_labels(self):
@@ -397,101 +429,54 @@ class MainWindow(QMainWindow):
             f"{self.team_b_score}"
         )
 
+    def update_team_a_button(self):
+        self.game_data.team_a_name = self.team_a_name.text()
+
+        self.team_a_label.setText(self.game_data.team_a_name)
+
+        self.team_a_button.setText(f"{self.game_data.team_a_name} + 1")
+
+    def update_team_b_button(self):
+        self.game_data.team_b_name = self.team_b_name.text()
+
+        self.team_b_label.setText(self.game_data.team_b_name)
+
+        self.team_b_button.setText(f"{self.game_data.team_b_name} + 1")
+
     def update_team_buttons(self):
-        self.team_a_label.setText(
-            f"{self.team_a_name.text()}"
-        )
-        self.team_b_label.setText(
-            f"{self.team_b_name.text()}"
-        )        
-        self.team_a_button.setText(
-            f"{self.team_a_name.text()} + 1"
-        )
-        self.team_b_button.setText(
-            f"{self.team_b_name.text()} + 1"
-        )        
+        self.team_a_label.setText(self.game_data.team_a_name)
+        self.team_b_label.setText(self.game_data.team_b_name)
+
+        self.team_a_button.setText(f"{self.game_data.team_a_name} + 1")
+        self.team_b_button.setText(f"{self.game_data.team_b_name} + 1")
 
     def reset_game_state(self):
-        self.events.clear()
+        self.game_data.events.clear()
         self.added_event_history.clear()
         self.event_list.clear()
 
-        self.team_a_score = self.team_a_starting_score.value()
-        self.team_b_score = self.team_b_starting_score.value()
+        self.team_a_score = self.game_data.starting_score_a
+        self.team_b_score = self.game_data.starting_score_b
 
         self.update_score_labels()
         self.update_team_buttons()
 
+    def set_game_setup_enabled(self, enabled):
+        self.team_a_name.setEnabled(enabled)
+        self.team_b_name.setEnabled(enabled)
+        self.team_a_starting_score.setEnabled(enabled)
+        self.team_b_starting_score.setEnabled(enabled)
+        self.initialize_button.setEnabled(enabled)
+
     def initialize_scores(self):
         self.reset_game_state()
 
-        self.team_a_name.setEnabled(False)
-        self.team_b_name.setEnabled(False)
-        self.team_a_starting_score.setEnabled(False)
-        self.team_b_starting_score.setEnabled(False)
-
-        self.initialize_button.setEnabled(False)
+        self.set_game_setup_enabled(False)
 
     def new_game(self):
         self.reset_game_state()
 
-        self.team_a_name.setEnabled(True)
-        self.team_b_name.setEnabled(True)
-        self.team_a_starting_score.setEnabled(True)
-        self.team_b_starting_score.setEnabled(True)
-
-        self.initialize_button.setEnabled(True)
-
-    def play_pause(self):
-        if self.media_player.isPlaying():
-            self.media_player.pause()
-        else:
-            self.media_player.play()
-
-    def rewind(self):
-        new_position = max(0, self.media_player.position() - 10000)
-        self.media_player.setPosition(new_position)
-
-    def forward(self):
-        new_position = self.media_player.position() + 10000
-        self.media_player.setPosition(new_position)
-
-    def position_changed(self, position):
-        self.position_slider.setValue(position)
-
-        self.position_label.setText(
-            f"{self.format_time(position)} / "
-            f"{self.format_time(self.media_player.duration())}"
-        )
-
-        # Update the score based on the current video position.
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(position)
-        )
-
-        self.update_score_labels()
-
-    def duration_changed(self, duration):
-        self.position_slider.setRange(0, duration)
-
-    def seek(self, position):
-        self.media_player.setPosition(position)
-
-    def seek_from_slider(self):
-        position = self.position_slider.value()
-        self.media_player.setPosition(position)
-
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(position)
-        )
-
-        self.update_score_labels()
-
-    def playback_state_changed(self, state):
-        if state == QMediaPlayer.PlayingState:
-            self.play_button.setText("Pause")
-        else:
-            self.play_button.setText("Play")
+        self.set_game_setup_enabled(True)
 
     def open_video(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -506,16 +491,16 @@ class MainWindow(QMainWindow):
 
         # Check whether the current game's video file is missing.
         replacing_missing_video = (
-            bool(self.video_file_path)
-            and not os.path.exists(self.video_file_path)
+            bool(self.game_data.video_file)
+            and not os.path.exists(self.game_data.video_file)
         )
 
         # Determine whether this is the same video
         same_video = False
 
-        if self.video_file_path:
+        if self.game_data.video_file:
             current_path = os.path.normcase(
-                os.path.abspath(self.video_file_path)
+                os.path.abspath(self.game_data.video_file)
             )
             new_path = os.path.normcase(
                 os.path.abspath(file_path)
@@ -526,7 +511,7 @@ class MainWindow(QMainWindow):
         if same_video:
             return
 
-        if self.events and not replacing_missing_video:
+        if self.game_data.events and not replacing_missing_video:
             result = QMessageBox.question(
                 self,
                 "Open New Video",
@@ -540,21 +525,13 @@ class MainWindow(QMainWindow):
                 return
 
         if not replacing_missing_video:
-            self.events.clear()
-            self.added_event_history.clear()
-            self.event_list.clear()
+            self.reset_game_state()
 
-            self.team_a_score = self.team_a_starting_score.value()
-            self.team_b_score = self.team_b_starting_score.value()
-
-            self.update_score_labels()
-            self.update_team_buttons()
-
-        if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
-            self.reset_video_elapsed_time()
+        if not self.ffmpeg_controller.is_running():
+            self.video_progress.reset()
             self.video_status_label.setText("Status: Ready")
 
-        self.video_file_path = file_path
+        self.game_data.video_file = file_path
         self.video_file_label.setText(
             f"Video: {os.path.basename(file_path)}"
         )
@@ -573,131 +550,128 @@ class MainWindow(QMainWindow):
         return f"{minutes:02d}:{seconds:02d}.{millis:03d}"
 
     def add_starting_event(self):
-        if self.events:
+        if self.game_data.events:
             return
 
-        self.team_a_score = self.team_a_starting_score.value()
-        self.team_b_score = self.team_b_starting_score.value()
+        self.team_a_score = self.game_data.starting_score_a
+        self.team_b_score = self.game_data.starting_score_b
 
         event = {
             "time": 0,
             "team": "START",
-            "score_a": self.team_a_starting_score.value(),
-            "score_b": self.team_b_starting_score.value(),
+            "score_a": self.game_data.starting_score_a,
+            "score_b": self.game_data.starting_score_b,
         }
 
-        self.events.append(event)
+        self.game_data.events.append(event)
+
+    def record_point(self, team):
+        # Ensure the starting-score event exists.
+        self.add_starting_event()
+
+        # Get the current video timestamp.
+        current_time = self.media_player.position()
+
+        # Calculate the score at the current video timestamp.
+        self.team_a_score, self.team_b_score = (
+            self.scoreboard.get_score_at_time(current_time)
+        )
+
+        # Award one point to the selected team.
+        if team == "A":
+            self.team_a_score += 1
+        else:
+            self.team_b_score += 1
+
+        # Create the scoring event.
+        event = {
+            "time": current_time,
+            "team": team,
+            "score_a": self.team_a_score,
+            "score_b": self.team_b_score,
+        }
+
+        # Record the event and add it to the Undo history.
+        self.game_data.events.append(event)
+        self.added_event_history.append(event)
+
+        # Lock the starting scores once the first point is recorded.
+        self.team_a_starting_score.setEnabled(False)
+        self.team_b_starting_score.setEnabled(False)
+
+        # Recalculate scores after adding the event.
+        self.scoreboard.recalculate_scores()
+
+        # Display the score at the current video timestamp.
+        self.team_a_score, self.team_b_score = (
+            self.scoreboard.get_score_at_time(current_time)
+        )
+
+        self.update_score_labels()
+        self.refresh_event_list(event)
 
     def team_a_button_clicked(self):
-        self.add_starting_event()
-
-        current_time = self.media_player.position()
-
-        # Calculate the score at the current video timestamp.
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
-        )
-
-        # Record Team A's new point.
-        self.team_a_score += 1
-
-        event = {
-            "time": current_time,
-            "team": "A",
-            "score_a": self.team_a_score,
-            "score_b": self.team_b_score,
-        }
-
-        self.events.append(event)
-        self.added_event_history.append(event)
-
-        # Lock the starting scores once the first point is recorded.
-        self.team_a_starting_score.setEnabled(False)
-        self.team_b_starting_score.setEnabled(False)
-
-        self.recalculate_scores()
-
-        # Display the score at the current video timestamp.
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
-        )
-
-        self.update_score_labels()
-        self.refresh_event_list(event)
+        self.record_point("A")
 
     def team_b_button_clicked(self):
-        self.add_starting_event()
+        self.record_point("B")
 
+    def refresh_scores_and_events(self):
+        # Recalculate scores after an event is removed.
+        self.scoreboard.recalculate_scores()
+
+        # Get the current video timestamp.
         current_time = self.media_player.position()
 
-        # Calculate the score at the current video timestamp.
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
-        )
+        # Find the last event at or before the current timestamp.
+        selected_event = None
 
-        # Record Team B's new point.
-        self.team_b_score += 1
+        for event in self.game_data.events:
+            if event["time"] <= current_time:
+                selected_event = event
+            else:
+                break
 
-        event = {
-            "time": current_time,
-            "team": "B",
-            "score_a": self.team_a_score,
-            "score_b": self.team_b_score,
-        }
-
-        self.events.append(event)
-        self.added_event_history.append(event)
-
-        # Lock the starting scores once the first point is recorded.
-        self.team_a_starting_score.setEnabled(False)
-        self.team_b_starting_score.setEnabled(False)
-
-        self.recalculate_scores()
+        # Refresh the event list and highlight the relevant event.
+        self.refresh_event_list(selected_event)
 
         # Display the score at the current video timestamp.
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         self.update_score_labels()
-        self.refresh_event_list(event)
 
     def undo_last_score(self):
+        # Return if there are no scoring events to undo.
         if not self.added_event_history:
             return
 
-        event = self.added_event_history[-1]
+        # Remove the latest event from the Undo history.
+        event = self.added_event_history.pop()
 
-        if event not in self.events:
-            self.added_event_history.pop()
+        # Return if the event is no longer in the game.
+        if event not in self.game_data.events:
             return
 
-        self.added_event_history.pop()
-        self.events.remove(event)
+        # Remove the event from the game.
+        self.game_data.events.remove(event)
 
-        self.recalculate_scores()
-        self.refresh_event_list()
+        # Recalculate scores and refresh the event list.
+        self.refresh_scores_and_events()
 
-        current_time = self.media_player.position()
-
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
-        )
-
-        self.update_score_labels()
-        
     def delete_selected_event(self):
         selected_row = self.event_list.currentRow()
 
         if selected_row < 0:
             return
 
-        event = self.events[selected_row]
+        event = self.game_data.events[selected_row]
 
         if event["team"] == "START":
             return
 
-        self.events.remove(event)
+        self.game_data.events.remove(event)
 
         # Remove the event from Undo history as well.
         self.added_event_history = [
@@ -706,16 +680,7 @@ class MainWindow(QMainWindow):
             if added_event is not event
         ]
 
-        self.recalculate_scores()
-        self.refresh_event_list()
-
-        current_time = self.media_player.position()
-
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
-        )
-
-        self.update_score_labels()
+        self.refresh_scores_and_events()
 
     def edit_selected_event_time(self):
         selected_row = self.event_list.currentRow()
@@ -723,7 +688,7 @@ class MainWindow(QMainWindow):
         if selected_row < 0:
             return
 
-        event = self.events[selected_row]
+        event = self.game_data.events[selected_row]
 
         # Do not allow editing the starting-score event.
         if event["team"] == "START":
@@ -733,76 +698,36 @@ class MainWindow(QMainWindow):
         event["time"] = self.media_player.position()
 
         # Recalculate scores and sort events by timestamp.
-        self.recalculate_scores()
+        self.scoreboard.recalculate_scores()
 
         # Refresh the event list.
         self.refresh_event_list()
 
         # Keep the edited event selected, even if its row changed.
-        new_row = self.events.index(event)
+        new_row = self.game_data.events.index(event)
         self.event_list.setCurrentRow(new_row)
 
         # Update the displayed score for the current video position.
         current_time = self.media_player.position()
 
         self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(current_time)
+            self.scoreboard.get_score_at_time(current_time)
         )
 
         self.update_score_labels()
     
-    def recalculate_scores(self):
-        score_a = self.team_a_starting_score.value()
-        score_b = self.team_b_starting_score.value()
-
-        self.events.sort(key=lambda event: event["time"])
-
-        for event in self.events:
-            if event["team"] == "START":
-                score_a = self.team_a_starting_score.value()
-                score_b = self.team_b_starting_score.value()
-
-            elif event["team"] == "A":
-                score_a += 1
-
-            elif event["team"] == "B":
-                score_b += 1
-
-            event["score_a"] = score_a
-            event["score_b"] = score_b
-
-    def get_score_at_time(self, time_ms):
-        score_a = self.team_a_starting_score.value()
-        score_b = self.team_b_starting_score.value()
-
-        for event in sorted(self.events, key=lambda e: e["time"]):
-            if event["time"] > time_ms:
-                break
-
-            if event["team"] == "START":
-                score_a = self.team_a_starting_score.value()
-                score_b = self.team_b_starting_score.value()
-
-            elif event["team"] == "A":
-                score_a += 1
-
-            elif event["team"] == "B":
-                score_b += 1
-
-        return score_a, score_b
-
     def refresh_event_list(self, selected_event=None):
         self.event_list.clear()
 
-        for event in self.events:
+        for event in self.game_data.events:
             time_text = self.format_time(event["time"])
 
             if event["team"] == "START":
                 team_name = "Starting Score"
             elif event["team"] == "A":
-                team_name = self.team_a_name.text()
+                team_name = self.game_data.team_a_name
             else:
-                team_name = self.team_b_name.text()
+                team_name = self.game_data.team_b_name
 
             self.event_list.addItem(
                 f"{time_text}    "
@@ -811,7 +736,7 @@ class MainWindow(QMainWindow):
             )
 
         if selected_event is not None:
-            for row, event in enumerate(self.events):
+            for row, event in enumerate(self.game_data.events):
                 if event is selected_event:
                     item = self.event_list.item(row)
                     self.event_list.setCurrentItem(item)
@@ -829,24 +754,11 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
 
-        # Add the .json extension if the user omitted it.
         if not file_path.lower().endswith(".json"):
             file_path += ".json"
 
-        game_data = {
-            "video_file": self.video_file_path,
-            "team_a_name": self.team_a_name.text(),
-            "team_b_name": self.team_b_name.text(),
-            "team_a_sets_won": self.team_a_sets_won.value(),
-            "team_b_sets_won": self.team_b_sets_won.value(),
-            "starting_score_a": self.team_a_starting_score.value(),
-            "starting_score_b": self.team_b_starting_score.value(),
-            "events": self.events,
-        }
-
         try:
-            with open(file_path, "w", encoding="utf-8") as file:
-                json.dump(game_data, file, indent=4)
+            save_game_file(file_path, self.game_data)
 
         except (OSError, TypeError, ValueError) as error:
             QMessageBox.critical(
@@ -868,147 +780,7 @@ class MainWindow(QMainWindow):
 
         # Read and validate the file before modifying the current game.
         try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                game_data = json.load(file)
-
-            required_fields = [
-                "video_file",
-                "team_a_name",
-                "team_b_name",
-                "starting_score_a",
-                "starting_score_b",
-                "events",
-            ]
-
-            for field in required_fields:
-                if field not in game_data:
-                    raise ValueError(
-                        f"Required field '{field}' is missing."
-                    )
-
-            if not isinstance(game_data["events"], list):
-                raise ValueError("'events' must be a list.")
-
-            # Validate starting scores before checking event consistency.
-            for field in ("starting_score_a", "starting_score_b"):
-                value = game_data[field]
-
-                if (
-                    not isinstance(value, int)
-                    or isinstance(value, bool)
-                    or value < 0
-                ):
-                    raise ValueError(
-                        f"'{field}' must be a non-negative integer."
-                    )
-
-            # Validate each event's structure and values first.
-            for index, event in enumerate(game_data["events"]):
-                if not isinstance(event, dict):
-                    raise ValueError(
-                        f"Event {index + 1} must be an object."
-                    )
-
-                for field in ("time", "team", "score_a", "score_b"):
-                    if field not in event:
-                        raise ValueError(
-                            f"Event {index + 1} is missing '{field}'."
-                        )
-
-                if event["team"] not in ("START", "A", "B"):
-                    raise ValueError(
-                        f"Event {index + 1} has an invalid team."
-                    )
-
-                if (
-                    not isinstance(event["time"], (int, float))
-                    or isinstance(event["time"], bool)
-                    or not math.isfinite(event["time"])
-                    or event["time"] < 0
-                ):
-                    raise ValueError(
-                        f"Event {index + 1} has an invalid timestamp."
-                    )
-
-                for score_key in ("score_a", "score_b"):
-                    score = event[score_key]
-
-                    if (
-                        not isinstance(score, int)
-                        or isinstance(score, bool)
-                        or score < 0
-                    ):
-                        raise ValueError(
-                            f"Event {index + 1} has an invalid {score_key}."
-                        )
-
-            # A saved game must contain exactly one START event.
-            start_event_count = sum(
-                1 for event in game_data["events"]
-                if event["team"] == "START"
-            )
-
-            if start_event_count != 1:
-                raise ValueError(
-                    "The game must contain exactly one START event."
-                )
-
-            # Validate event scores in chronological order.
-            expected_score_a = game_data["starting_score_a"]
-            expected_score_b = game_data["starting_score_b"]
-
-            sorted_events = sorted(
-                game_data["events"],
-                key=lambda event: event["time"]
-            )
-
-            for index, event in enumerate(sorted_events):
-                if event["team"] == "START":
-                    expected_score_a = game_data["starting_score_a"]
-                    expected_score_b = game_data["starting_score_b"]
-
-                elif event["team"] == "A":
-                    expected_score_a += 1
-
-                elif event["team"] == "B":
-                    expected_score_b += 1
-
-                if (
-                    event["score_a"] != expected_score_a
-                    or event["score_b"] != expected_score_b
-                ):
-                    raise ValueError(
-                        f"Event {index + 1} has scores that do not "
-                        "match the event history."
-                    )
-
-            if not isinstance(game_data["video_file"], str):
-                raise ValueError("'video_file' must be a string.")
-
-            if (
-                not isinstance(game_data["team_a_name"], str)
-                or not game_data["team_a_name"].strip()
-            ):
-                raise ValueError("'team_a_name' must be a non-empty string.")
-
-            if (
-                not isinstance(game_data["team_b_name"], str)
-                or not game_data["team_b_name"].strip()
-            ):
-                raise ValueError("'team_b_name' must be a non-empty string.")
-
-            for field in ("team_a_sets_won", "team_b_sets_won"):
-                value = game_data.get(field, 0)
-
-                if (
-                    not isinstance(value, int)
-                    or isinstance(value, bool)
-                    or value < 0
-                    or value > 9
-                ):
-                    raise ValueError(
-                        f"'{field}' must be an integer between 0 and 9."
-                    )
+            saved_data = load_game_file(file_path)
 
         except (OSError, json.JSONDecodeError, ValueError, TypeError) as error:
             QMessageBox.critical(
@@ -1019,162 +791,76 @@ class MainWindow(QMainWindow):
             return
 
         # Apply the validated data to the application.
-        if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
-            self.reset_video_elapsed_time()
+        if not self.ffmpeg_controller.is_running():
+            self.video_progress.reset()
             self.video_status_label.setText("Status: Ready")
 
-        self.video_file_path = game_data["video_file"]
+        # Update GameData first.
+        self.game_data.video_file = saved_data["video_file"]
 
+        self.game_data.team_a_name = saved_data["team_a_name"]
+        self.game_data.team_b_name = saved_data["team_b_name"]
+
+        self.game_data.team_a_sets_won = saved_data.get(
+            "team_a_sets_won", 0
+        )
+        self.game_data.team_b_sets_won = saved_data.get(
+            "team_b_sets_won", 0
+        )
+
+        self.game_data.starting_score_a = saved_data["starting_score_a"]
+        self.game_data.starting_score_b = saved_data["starting_score_b"]
+
+        self.game_data.events = saved_data["events"]
+
+        # Update the UI from GameData.
         self.video_file_label.setText(
-            f"Video: {os.path.basename(self.video_file_path)}"
+            f"Video: {os.path.basename(self.game_data.video_file)}"
         )
 
-        self.team_a_name.setText(game_data["team_a_name"])
-        self.team_b_name.setText(game_data["team_b_name"])
+        self.team_a_name.setText(self.game_data.team_a_name)
+        self.team_b_name.setText(self.game_data.team_b_name)
 
-        self.team_a_sets_won.setValue(
-            game_data.get("team_a_sets_won", 0)
-        )
-        self.team_b_sets_won.setValue(
-            game_data.get("team_b_sets_won", 0)
-        )
+        self.team_a_sets_won.setValue(self.game_data.team_a_sets_won)
+        self.team_b_sets_won.setValue(self.game_data.team_b_sets_won)
 
         self.team_a_starting_score.setValue(
-            game_data["starting_score_a"]
+            self.game_data.starting_score_a
         )
         self.team_b_starting_score.setValue(
-            game_data["starting_score_b"]
+            self.game_data.starting_score_b
         )
 
-        self.events = game_data["events"]
+        # Reset the undo history for the newly loaded game.
         self.added_event_history = []
 
-        self.recalculate_scores()
+        self.scoreboard.recalculate_scores()
         self.refresh_event_list()
 
-        self.team_a_score, self.team_b_score = (
-            self.get_score_at_time(
-                self.media_player.position()
-            )
+        self.team_a_score, self.team_b_score = self.scoreboard.get_score_at_time(
+            self.media_player.position()
         )
 
         self.update_score_labels()
         self.update_team_buttons()
 
-        self.team_a_name.setEnabled(False)
-        self.team_b_name.setEnabled(False)
-        self.team_a_starting_score.setEnabled(False)
-        self.team_b_starting_score.setEnabled(False)
+        self.set_game_setup_enabled(False)
 
-        self.initialize_button.setEnabled(False)
-
-        if os.path.exists(self.video_file_path):
+        if os.path.exists(self.game_data.video_file):
             self.media_player.setSource(
-                QUrl.fromLocalFile(self.video_file_path)
+                QUrl.fromLocalFile(self.game_data.video_file)
             )
         else:
             QMessageBox.warning(
                 self,
                 "Video Not Found",
                 f"The video file could not be found:\n\n"
-                f"{self.video_file_path}"
+                f"{self.game_data.video_file}"
             )
-
-    def build_score_timeline(self):
-        timeline = []
-
-        current_time = 0
-        current_score_a = self.team_a_starting_score.value()
-        current_score_b = self.team_b_starting_score.value()
-
-        for event in self.events:
-            if event["team"] == "START":
-                current_score_a = event["score_a"]
-                current_score_b = event["score_b"]
-                continue
-
-            timeline.append({
-                "start_time": current_time,
-                "end_time": event["time"],
-                "score_a": current_score_a,
-                "score_b": current_score_b,
-            })
-
-            current_time = event["time"]
-            current_score_a = event["score_a"]
-            current_score_b = event["score_b"]
-
-        # Last score continues until the end of the video
-        timeline.append({
-            "start_time": current_time,
-            "end_time": self.media_player.duration(),
-            "score_a": current_score_a,
-            "score_b": current_score_b,
-        })
-
-        return timeline
-
-    def escape_ffmpeg_text(self, text):
-        """Escape text for use in FFmpeg's drawtext filter."""
-        text = str(text)
-
-        # Escape backslashes first.
-        text = text.replace("\\", "\\\\")
-        text = text.replace(":", "\\:")
-        text = text.replace(",", "\\,")
-        text = text.replace("[", "\\[")
-        text = text.replace("]", "\\]")
-        text = text.replace("%", "\\%")
-
-        # Escape apostrophes for FFmpeg filter syntax.
-        text = text.replace("'", "'\\''")
-
-        return text
-
-    def build_ffmpeg_filter(self, timeline):
-        filters = []
-
-        team_a_name = self.team_a_name.text()
-        team_b_name = self.team_b_name.text()
-
-        sets_a = self.team_a_sets_won.value()
-        sets_b = self.team_b_sets_won.value()
-        set_number = sets_a + sets_b + 1
-
-        for i, period in enumerate(timeline):
-            text = (
-                f"Set {set_number}    "
-                f"({sets_a}) {self.escape_ffmpeg_text(team_a_name)}    "
-                f"{period['score_a']} - {period['score_b']}    "
-                f"{self.escape_ffmpeg_text(team_b_name)} ({sets_b})"
-            )
-
-            start = period["start_time"] / 1000
-
-            if i == len(timeline) - 1:
-                enable = f"gte(t,{start:.3f})"
-            else:
-                end = period["end_time"] / 1000
-                enable = f"gte(t,{start:.3f})*lt(t,{end:.3f})"
-
-            filters.append(
-                "drawtext="
-                f"text='{text}':"
-                "fontcolor=white:"
-                "fontsize=72:"
-                "box=1:"
-                "boxcolor=black@0.6:"
-                "boxborderw=20:"
-                "x=(w-text_w)/2:"
-                "y=h-text_h-30:"
-                f"enable='{enable}'"
-            )
-
-        return ",".join(filters)
 
     def generate_video(self):
         # Check whether a video has been selected.
-        if not self.video_file_path:
+        if not self.game_data.video_file:
             QMessageBox.warning(
                 self,
                 "No Video",
@@ -1183,7 +869,7 @@ class MainWindow(QMainWindow):
             return
 
         # Check whether there are any score events.
-        if not self.events:
+        if not self.game_data.events:
             QMessageBox.warning(
                 self,
                 "No Score Events",
@@ -1220,140 +906,49 @@ class MainWindow(QMainWindow):
             return
 
         # Build the timeline and FFmpeg filter.
-        timeline = self.build_score_timeline()
-        ffmpeg_filter = self.build_ffmpeg_filter(timeline)
+        timeline = self.video_generator.build_score_timeline(
+            self.media_player.duration()
+        )
+        ffmpeg_filter = self.video_generator.build_ffmpeg_filter(timeline)
 
         # Prepare the FFmpeg command.
-        command = [
-            "-y",
-            "-nostats",
-            "-i",
-            self.video_file_path,
-            "-vf",
+        command = self.video_generator.build_ffmpeg_command(
+            output_file,
             ffmpeg_filter,
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-preset",
-            "medium",
-            "-crf",
-            str(self.video_quality_combo.currentData()),
-            "-c:a",
-            "copy",
-            "-progress",
-            "pipe:1",
-            "-nostats",
-            output_file
-        ]
+            self.video_quality_combo.currentData()
+        )
 
-        # Reset the progress bar and error output.
-        self.ffmpeg_error_output = ""
-        self.ffmpeg_output_buffer = ""
+        # Reset the progress tracking state.
+        self.video_progress.reset()
         self.video_generation_cancelled = False
+
+        # Reset the progress bar.
         self.video_progress_bar.setValue(0)
+
         self.video_progress_bar.setFormat("Generating video: 0%")
         self.video_progress_bar.setVisible(True)
         self.video_status_label.setText("Status: Generating video...")
 
         # Start the elapsed-time timer.
-        self.video_generation_start_time = time.perf_counter()
-        self.video_elapsed_label.setText("Elapsed time: 00:00:00")
-        self.video_elapsed_label.setVisible(True)
-        self.video_elapsed_timer.start()
+        self.video_progress.start()
 
         # Prevent another generation request while FFmpeg is running.
         self.generate_video_button.setEnabled(False)
         self.cancel_video_button.setEnabled(True)
 
         # Start FFmpeg asynchronously.
-        self.ffmpeg_process.setProgram("ffmpeg")
-        self.ffmpeg_process.setArguments(command)
-        self.ffmpeg_process.start()
+        self.ffmpeg_controller.start(command)
 
-    def update_video_elapsed_time(self):
-        if self.video_generation_start_time is None:
-            return
-
-        elapsed_seconds = int(
-            time.perf_counter() - self.video_generation_start_time
+    def update_video_progress(self, output):
+        # Update the progress display using the output received from FFmpeg.
+        self.video_progress.update_progress(
+            output,
+            self.video_duration_seconds,
+            self.video_progress_bar,
         )
-
-        hours = elapsed_seconds // 3600
-        minutes = (elapsed_seconds % 3600) // 60
-        seconds = elapsed_seconds % 60
-
-        self.video_elapsed_label.setText(
-            f"Elapsed time: {hours:02d}:{minutes:02d}:{seconds:02d}"
-        )
-
-    def reset_video_elapsed_time(self):
-        self.video_elapsed_timer.stop()
-        self.video_generation_start_time = None
-        self.video_elapsed_label.setText("Elapsed time: 00:00:00")
-        self.video_elapsed_label.setVisible(False)
-
-    def update_video_progress(self):
-        output = bytes(
-            self.ffmpeg_process.readAllStandardOutput()
-        ).decode("utf-8", errors="replace")
-
-        # Keep any incomplete line for the next read.
-        self.ffmpeg_output_buffer += output
-        lines = self.ffmpeg_output_buffer.split("\n")
-
-        # The last element may be incomplete, so retain it.
-        self.ffmpeg_output_buffer = lines.pop()
-
-        for line in lines:
-            line = line.strip()
-
-            if line.startswith("out_time="):
-                time_text = line.split("=", 1)[1]
-
-                if (
-                    time_text != "N/A"
-                    and self.video_duration_seconds > 0
-                ):
-                    try:
-                        hours, minutes, seconds = time_text.split(":")
-
-                        elapsed = (
-                            int(hours) * 3600
-                            + int(minutes) * 60
-                            + float(seconds)
-                        )
-
-                        percent = int(
-                            elapsed / self.video_duration_seconds * 100
-                        )
-
-                        # Keep progress below 100% until FFmpeg finishes.
-                        percent = max(0, min(99, percent))
-
-                        # Never let the displayed percentage decrease.
-                        percent = max(
-                            self.video_progress_bar.value(),
-                            percent,
-                        )
-
-                        self.video_progress_bar.setValue(percent)
-                        self.video_progress_bar.setFormat(
-                            f"Generating video: {percent}%"
-                        )
-
-                    except ValueError:
-                        pass
-
-    def read_ffmpeg_error(self):
-        error = bytes(
-            self.ffmpeg_process.readAllStandardError()
-        ).decode("utf-8", errors="replace")
-
-        self.ffmpeg_error_output += error
 
     def cancel_video_generation(self):
-        if self.ffmpeg_process.state() == QProcess.ProcessState.NotRunning:
+        if not self.ffmpeg_controller.is_running():
             return
 
         reply = QMessageBox.question(
@@ -1367,42 +962,37 @@ class MainWindow(QMainWindow):
 
         if reply == QMessageBox.StandardButton.Yes:
             self.video_generation_cancelled = True
-            self.ffmpeg_process.kill()
+            self.ffmpeg_controller.kill()
 
     def ffmpeg_process_error(self, error):
         # Handle failure to start FFmpeg.
         if error == QProcess.ProcessError.FailedToStart:
-            self.video_status_label.setText("Status: Video generation failed")
-            self.video_elapsed_timer.stop()
+            self.video_status_label.setText(
+                "Status: Video generation failed"
+            )
+            self.video_progress.stop_timer()
             self.generate_video_button.setEnabled(True)
             self.cancel_video_button.setEnabled(False)
 
             self.video_progress_bar.setFormat("Generation failed")
 
+            # Get the error message from FFmpegController.
+            error_message = self.ffmpeg_controller.get_error_message(
+                error
+            )
+
             QMessageBox.critical(
                 self,
                 "FFmpeg Error",
-                "Could not start FFmpeg. Please check that FFmpeg "
-                "is installed and accessible from your PATH."
+                error_message
             )
 
     def video_generation_finished(self, exit_code, exit_status):
         # Stop the elapsed-time timer.
-        self.video_elapsed_timer.stop()
+        self.video_progress.stop_timer()
 
         # Calculate the total elapsed time.
-        elapsed_seconds = 0
-
-        if self.video_generation_start_time is not None:
-            elapsed_seconds = int(
-                time.perf_counter() - self.video_generation_start_time
-            )
-
-        hours = elapsed_seconds // 3600
-        minutes = (elapsed_seconds % 3600) // 60
-        seconds = elapsed_seconds % 60
-
-        elapsed_text = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        elapsed_text = self.video_progress.get_elapsed_time_text()
 
         self.generate_video_button.setEnabled(True)
         self.cancel_video_button.setEnabled(False)
@@ -1462,12 +1052,12 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Video Generation Failed",
-                f"{self.ffmpeg_error_output or 'FFmpeg could not generate the video.'}\n\n"
+                f"{self.ffmpeg_controller.error_output or 'FFmpeg could not generate the video.'}\n\n"
                 f"Elapsed time: {elapsed_text}"
             )
 
     def closeEvent(self, event):
-        if self.ffmpeg_process.state() != QProcess.ProcessState.NotRunning:
+        if self.ffmpeg_controller.is_running():
             QMessageBox.warning(
                 self,
                 "Video Generation in Progress",
