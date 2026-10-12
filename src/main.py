@@ -599,6 +599,46 @@ class MainWindow(QMainWindow):
     def team_b_button_clicked(self):
         self.record_point("B")
 
+#    def refresh_scores_and_events(self):
+        # Recalculate scores and refresh the event list.
+ #       self.scoreboard.recalculate_scores()
+  #      self.refresh_event_list()
+
+        # Display the score at the current video timestamp.
+   #     current_time = self.media_player.position()
+
+    #    self.team_a_score, self.team_b_score = (
+     #       self.scoreboard.get_score_at_time(current_time)
+      #  )
+
+       # self.update_score_labels()
+
+    def refresh_scores_and_events(self):
+        # Recalculate scores after an event is removed.
+        self.scoreboard.recalculate_scores()
+
+        # Get the current video timestamp.
+        current_time = self.media_player.position()
+
+        # Find the last event at or before the current timestamp.
+        selected_event = None
+
+        for event in self.game_data.events:
+            if event["time"] <= current_time:
+                selected_event = event
+            else:
+                break
+
+        # Refresh the event list and highlight the relevant event.
+        self.refresh_event_list(selected_event)
+
+        # Display the score at the current video timestamp.
+        self.team_a_score, self.team_b_score = (
+            self.scoreboard.get_score_at_time(current_time)
+        )
+
+        self.update_score_labels()
+
     def undo_last_score(self):
         # Return if there are no scoring events to undo.
         if not self.added_event_history:
@@ -615,17 +655,7 @@ class MainWindow(QMainWindow):
         self.game_data.events.remove(event)
 
         # Recalculate scores and refresh the event list.
-        self.scoreboard.recalculate_scores()
-        self.refresh_event_list()
-
-        # Display the score at the current video timestamp.
-        current_time = self.media_player.position()
-
-        self.team_a_score, self.team_b_score = (
-            self.scoreboard.get_score_at_time(current_time)
-        )
-
-        self.update_score_labels()
+        self.refresh_scores_and_events()
 
     def delete_selected_event(self):
         selected_row = self.event_list.currentRow()
@@ -647,16 +677,7 @@ class MainWindow(QMainWindow):
             if added_event is not event
         ]
 
-        self.scoreboard.recalculate_scores()
-        self.refresh_event_list()
-
-        current_time = self.media_player.position()
-
-        self.team_a_score, self.team_b_score = (
-            self.scoreboard.get_score_at_time(current_time)
-        )
-
-        self.update_score_labels()
+        self.refresh_scores_and_events()
 
     def edit_selected_event_time(self):
         selected_row = self.event_list.currentRow()
