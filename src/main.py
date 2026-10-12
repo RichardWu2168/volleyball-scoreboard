@@ -548,9 +548,11 @@ class MainWindow(QMainWindow):
 
         self.game_data.events.append(event)
 
-    def team_a_button_clicked(self):
+    def record_point(self, team):
+        # Ensure the starting-score event exists.
         self.add_starting_event()
 
+        # Get the current video timestamp.
         current_time = self.media_player.position()
 
         # Calculate the score at the current video timestamp.
@@ -558,16 +560,21 @@ class MainWindow(QMainWindow):
             self.scoreboard.get_score_at_time(current_time)
         )
 
-        # Record Team A's new point.
-        self.team_a_score += 1
+        # Award one point to the selected team.
+        if team == "A":
+            self.team_a_score += 1
+        else:
+            self.team_b_score += 1
 
+        # Create the scoring event.
         event = {
             "time": current_time,
-            "team": "A",
+            "team": team,
             "score_a": self.team_a_score,
             "score_b": self.team_b_score,
         }
 
+        # Record the event and add it to the Undo history.
         self.game_data.events.append(event)
         self.added_event_history.append(event)
 
@@ -575,6 +582,7 @@ class MainWindow(QMainWindow):
         self.team_a_starting_score.setEnabled(False)
         self.team_b_starting_score.setEnabled(False)
 
+        # Recalculate scores after adding the event.
         self.scoreboard.recalculate_scores()
 
         # Display the score at the current video timestamp.
@@ -584,43 +592,12 @@ class MainWindow(QMainWindow):
 
         self.update_score_labels()
         self.refresh_event_list(event)
+
+    def team_a_button_clicked(self):
+        self.record_point("A")
 
     def team_b_button_clicked(self):
-        self.add_starting_event()
-
-        current_time = self.media_player.position()
-
-        # Calculate the score at the current video timestamp.
-        self.team_a_score, self.team_b_score = (
-            self.scoreboard.get_score_at_time(current_time)
-        )
-
-        # Record Team B's new point.
-        self.team_b_score += 1
-
-        event = {
-            "time": current_time,
-            "team": "B",
-            "score_a": self.team_a_score,
-            "score_b": self.team_b_score,
-        }
-
-        self.game_data.events.append(event)
-        self.added_event_history.append(event)
-
-        # Lock the starting scores once the first point is recorded.
-        self.team_a_starting_score.setEnabled(False)
-        self.team_b_starting_score.setEnabled(False)
-
-        self.scoreboard.recalculate_scores()
-
-        # Display the score at the current video timestamp.
-        self.team_a_score, self.team_b_score = (
-            self.scoreboard.get_score_at_time(current_time)
-        )
-
-        self.update_score_labels()
-        self.refresh_event_list(event)
+        self.record_point("B")
 
     def undo_last_score(self):
         if not self.added_event_history:
@@ -840,7 +817,7 @@ class MainWindow(QMainWindow):
         self.update_team_buttons()
 
         self.set_game_setup_enabled(False)
-        
+
         if os.path.exists(self.game_data.video_file):
             self.media_player.setSource(
                 QUrl.fromLocalFile(self.game_data.video_file)
