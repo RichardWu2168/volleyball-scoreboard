@@ -210,8 +210,8 @@ class MainWindow(QMainWindow):
 
         self.team_a_starting_score.valueChanged.connect(self.update_starting_score_labels)
         self.team_b_starting_score.valueChanged.connect(self.update_starting_score_labels)
-        self.team_a_name.textChanged.connect(self.update_team_buttons)
-        self.team_b_name.textChanged.connect(self.update_team_buttons)
+        self.team_a_name.textChanged.connect(self.update_team_a_button)
+        self.team_b_name.textChanged.connect(self.update_team_b_button)
 
         self.team_a_button.clicked.connect(self.team_a_button_clicked)
         self.team_b_button.clicked.connect(self.team_b_button_clicked)
@@ -394,7 +394,6 @@ class MainWindow(QMainWindow):
         self.team_b_score = event["score_b"]
 
         self.update_score_labels()
-        # self.update_team_buttons()
 
     def update_starting_score_labels(self):
         self.game_data.starting_score_a = self.team_a_starting_score.value()
@@ -413,10 +412,21 @@ class MainWindow(QMainWindow):
             f"{self.team_b_score}"
         )
 
-    def update_team_buttons(self):
+    def update_team_a_button(self):
         self.game_data.team_a_name = self.team_a_name.text()
+
+        self.team_a_label.setText(self.game_data.team_a_name)
+
+        self.team_a_button.setText(f"{self.game_data.team_a_name} + 1")
+
+    def update_team_b_button(self):
         self.game_data.team_b_name = self.team_b_name.text()
 
+        self.team_b_label.setText(self.game_data.team_b_name)
+
+        self.team_b_button.setText(f"{self.game_data.team_b_name} + 1")
+
+    def update_team_buttons(self):
         self.team_a_label.setText(self.game_data.team_a_name)
         self.team_b_label.setText(self.game_data.team_b_name)
 
@@ -499,14 +509,6 @@ class MainWindow(QMainWindow):
 
         if not replacing_missing_video:
             self.game_data.events.clear()
-            self.added_event_history.clear()
-            self.event_list.clear()
-
-            self.team_a_score = self.game_data.starting_score_a
-            self.team_b_score = self.game_data.starting_score_b
-
-            self.update_score_labels()
-            self.update_team_buttons()
 
         if not self.ffmpeg_controller.is_running():
             self.video_progress.reset()
