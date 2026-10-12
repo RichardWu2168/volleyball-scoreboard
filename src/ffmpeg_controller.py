@@ -89,3 +89,10 @@ class FFmpegController(QObject):
         # Stop FFmpeg if it is running.
         if self.process.state() != QProcess.ProcessState.NotRunning:
             self.process.kill()
+
+    def is_running(self):
+        # Check whether FFmpeg is currently running.
+        return (
+            self.process.state()
+            != QProcess.ProcessState.NotRunning
+        )

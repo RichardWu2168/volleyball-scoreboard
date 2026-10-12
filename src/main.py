@@ -946,7 +946,7 @@ class MainWindow(QMainWindow):
         )
 
     def cancel_video_generation(self):
-        if (self.ffmpeg_controller.process.state() == QProcess.ProcessState.NotRunning):
+        if not self.ffmpeg_controller.is_running():
             return
 
         reply = QMessageBox.question(
@@ -1061,7 +1061,7 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self, event):
-        if self.ffmpeg_controller.process.state() != QProcess.ProcessState.NotRunning:
+        if self.ffmpeg_controller.is_running():
             QMessageBox.warning(
                 self,
                 "Video Generation in Progress",
