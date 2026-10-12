@@ -33,6 +33,28 @@ class FFmpegController(QObject):
         # Forward the process error through the controller's signal.
         self.process_error_occurred.emit(error)
 
+    def get_error_message(self, error):
+        # Return a helpful message for common process errors.
+        if error == QProcess.ProcessError.FailedToStart:
+            return (
+                "Could not start FFmpeg. Please check that FFmpeg "
+                "is installed and accessible from your PATH."
+            )
+
+        if error == QProcess.ProcessError.Crashed:
+            return "FFmpeg crashed while generating the video."
+
+        if error == QProcess.ProcessError.Timedout:
+            return "The FFmpeg process timed out."
+
+        if error == QProcess.ProcessError.ReadError:
+            return "An error occurred while reading FFmpeg output."
+
+        if error == QProcess.ProcessError.WriteError:
+            return "An error occurred while writing to FFmpeg."
+
+        return "An unknown FFmpeg process error occurred."
+
     def _handle_process_finished(self, exit_code, exit_status):
         # Forward the process completion through the controller's signal.
         self.process_finished.emit(exit_code, exit_status)

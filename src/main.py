@@ -965,18 +965,24 @@ class MainWindow(QMainWindow):
     def ffmpeg_process_error(self, error):
         # Handle failure to start FFmpeg.
         if error == QProcess.ProcessError.FailedToStart:
-            self.video_status_label.setText("Status: Video generation failed")
+            self.video_status_label.setText(
+                "Status: Video generation failed"
+            )
             self.video_progress.stop_timer()
             self.generate_video_button.setEnabled(True)
             self.cancel_video_button.setEnabled(False)
 
             self.video_progress_bar.setFormat("Generation failed")
 
+            # Get the error message from FFmpegController.
+            error_message = self.ffmpeg_controller.get_error_message(
+                error
+            )
+
             QMessageBox.critical(
                 self,
                 "FFmpeg Error",
-                "Could not start FFmpeg. Please check that FFmpeg "
-                "is installed and accessible from your PATH."
+                error_message
             )
 
     def video_generation_finished(self, exit_code, exit_status):
