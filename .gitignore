@@ -1,8 +1,13 @@
-# Don't upload the Python virtual environment
-.venv/
-
-# Don't upload Python's temporary bytecode cache
+# Python temporary bytecode cache. Don't upload Python's temporary bytecode cache
 __pycache__/
 
-# Don't upload compiled Python files
-*.pyc
+# Compiled Python files. Don't upload compiled Python files
+*.py[cod]
+
+# Python virtual environments. Don't upload the Python virtual environment
+.venv/
+venv/
+
+# PyInstaller generated files
+/build/
+/dist/
