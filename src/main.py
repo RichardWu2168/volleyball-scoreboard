@@ -508,7 +508,7 @@ class MainWindow(QMainWindow):
                 return
 
         if not replacing_missing_video:
-            self.game_data.events.clear()
+            self.reset_game_state()
 
         if not self.ffmpeg_controller.is_running():
             self.video_progress.reset()
