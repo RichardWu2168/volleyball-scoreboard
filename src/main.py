@@ -434,25 +434,22 @@ class MainWindow(QMainWindow):
         self.update_score_labels()
         self.update_team_buttons()
 
+    def set_game_setup_enabled(self, enabled):
+        self.team_a_name.setEnabled(enabled)
+        self.team_b_name.setEnabled(enabled)
+        self.team_a_starting_score.setEnabled(enabled)
+        self.team_b_starting_score.setEnabled(enabled)
+        self.initialize_button.setEnabled(enabled)
+
     def initialize_scores(self):
         self.reset_game_state()
 
-        self.team_a_name.setEnabled(False)
-        self.team_b_name.setEnabled(False)
-        self.team_a_starting_score.setEnabled(False)
-        self.team_b_starting_score.setEnabled(False)
-
-        self.initialize_button.setEnabled(False)
+        self.set_game_setup_enabled(False)
 
     def new_game(self):
         self.reset_game_state()
 
-        self.team_a_name.setEnabled(True)
-        self.team_b_name.setEnabled(True)
-        self.team_a_starting_score.setEnabled(True)
-        self.team_b_starting_score.setEnabled(True)
-
-        self.initialize_button.setEnabled(True)
+        self.set_game_setup_enabled(True)
 
     def open_video(self):
         file_path, _ = QFileDialog.getOpenFileName(
