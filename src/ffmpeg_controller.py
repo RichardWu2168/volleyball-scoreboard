@@ -1,8 +1,10 @@
+import logging
 import ctypes
 import sys
 
 from PySide6.QtCore import QObject, QProcess, Signal
 
+logger = logging.getLogger(__name__)
 
 class FFmpegController(QObject):
     # Signals that MainWindow can connect to.
@@ -72,32 +74,50 @@ class FFmpegController(QObject):
     def _handle_process_error(self, error):
         # Release the sleep prevention request if FFmpeg cannot start.
         if error == QProcess.ProcessError.FailedToStart:
+            logger.error(
+                "FFmpeg failed to start. Check whether FFmpeg is installed "
+                "and accessible."
+            )
             self.restore_system_sleep()
 
         # Forward the process error through the controller's signal.
         self.process_error_occurred.emit(error)
 
     def get_error_message(self, error):
-        # Return a helpful message for common process errors.
-        if error == QProcess.ProcessError.FailedToStart:
-            return (
+        # Map common process errors to helpful messages.
+        error_messages = {
+            QProcess.ProcessError.FailedToStart: (
                 "Could not start FFmpeg. Please check that FFmpeg "
                 "is installed and accessible from your PATH."
-            )
+            ),
+            QProcess.ProcessError.Crashed: (
+                "FFmpeg crashed while generating the video."
+            ),
+            QProcess.ProcessError.Timedout: (
+                "The FFmpeg process timed out."
+            ),
+            QProcess.ProcessError.ReadError: (
+                "An error occurred while reading FFmpeg output."
+            ),
+            QProcess.ProcessError.WriteError: (
+                "An error occurred while writing to FFmpeg."
+            ),
+        }
 
-        if error == QProcess.ProcessError.Crashed:
-            return "FFmpeg crashed while generating the video."
+        # Get the corresponding message, if available.
+        message = error_messages.get(
+            error,
+            "An unknown FFmpeg process error occurred."
+        )
 
-        if error == QProcess.ProcessError.Timedout:
-            return "The FFmpeg process timed out."
+        # Log the technical error.
+        logger.error(
+            "FFmpeg process error: %s; message: %s",
+            error,
+            message,
+        )
 
-        if error == QProcess.ProcessError.ReadError:
-            return "An error occurred while reading FFmpeg output."
-
-        if error == QProcess.ProcessError.WriteError:
-            return "An error occurred while writing to FFmpeg."
-
-        return "An unknown FFmpeg process error occurred."
+        return message
 
     def _handle_process_finished(self, exit_code, exit_status):
         # Restore normal power behavior when FFmpeg finishes,
@@ -108,6 +128,7 @@ class FFmpegController(QObject):
         self.process_finished.emit(exit_code, exit_status)
 
     def start(self, command):
+        logger.info("Starting FFmpeg process.")
         # Do not start FFmpeg if it is already running.
         if self.is_running():
             return False
@@ -145,6 +166,7 @@ class FFmpegController(QObject):
     def kill(self):
         # Stop FFmpeg if it is running.
         if self.process.state() != QProcess.ProcessState.NotRunning:
+            logger.info("Terminating FFmpeg process.")
             self.process.kill()
 
     def is_running(self):

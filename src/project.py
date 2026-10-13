@@ -2,7 +2,7 @@ import json
 import math
 
 def save_game_file(file_path, game_data):
-    #"""Save game data to a JSON file."""
+    # Save game data to a JSON file.
     saved_data = {
         "video_file": game_data.video_file,
         "team_a_name": game_data.team_a_name,
@@ -18,7 +18,7 @@ def save_game_file(file_path, game_data):
         json.dump(saved_data, file, indent=4)
 
 def load_game_file(file_path):
-#"""Load and validate game data from a JSON file."""
+    # Load and validate game data from a JSON file.
     with open(file_path, "r", encoding="utf-8") as file:
         saved_data = json.load(file)
 
@@ -90,7 +90,7 @@ def load_game_file(file_path):
                 or score < 0
             ):
                 raise ValueError(
-                    f"Event {index + 1} has an invalid {score_key}."
+                    f"Event {index + 1} has an invalid {score_key}: {event[score_key]}."
                 )
 
     # A saved game must contain exactly one START event.

@@ -1,5 +1,5 @@
 class VideoGenerator:
-    #"""Builds the scoreboard timeline and FFmpeg overlay filter."""
+    # Builds the scoreboard timeline and FFmpeg overlay filter.
 
     def __init__(self, game_data):
         self.game_data = game_data
@@ -11,7 +11,10 @@ class VideoGenerator:
         current_score_a = self.game_data.starting_score_a
         current_score_b = self.game_data.starting_score_b
 
-        for event in self.game_data.events:
+        for event in sorted(
+            self.game_data.events,
+            key=lambda event: event["time"]
+        ):
             if event["team"] == "START":
                 current_score_a = event["score_a"]
                 current_score_b = event["score_b"]
@@ -103,10 +106,9 @@ class VideoGenerator:
         ffmpeg_filter,
         video_quality
     ):
-        #"""Build the FFmpeg arguments for video generation."""
+        # Build the FFmpeg arguments for video generation.
         return [
             "-y",
-            "-nostats",
             "-i",
             self.game_data.video_file,
             "-vf",

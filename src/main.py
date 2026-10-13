@@ -1,14 +1,7 @@
 import os
 import sys
 import json
-
-from game import GameData
-from project import load_game_file, save_game_file
-from scoreboard import Scoreboard
-from video_controller import VideoController
-from video_generator import VideoGenerator
-from video_progress import VideoProgress
-from ffmpeg_controller import FFmpegController
+import logging
 
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QUrl, Qt, QProcess
@@ -33,10 +26,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app_logging import setup_logging
+from ffmpeg_controller import FFmpegController
+from game import GameData
+from project import load_game_file, save_game_file
+from scoreboard import Scoreboard
+from video_controller import VideoController
+from video_generation_controller import VideoGenerationController
+from video_generator import VideoGenerator
+from video_progress import VideoProgress
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        logger.info("Main window initialized.")
 
         # Initialize application data and controllers.
         self.initialize_application_state()
@@ -61,8 +68,6 @@ class MainWindow(QMainWindow):
         self.added_event_history = []
         self.team_a_score = 0
         self.team_b_score = 0
-        self.video_generation_cancelled = False
-        self.video_duration_seconds = 0        
 
     def create_widgets(self):
         # Move the existing widget creation and configuration code here.
@@ -140,8 +145,8 @@ class MainWindow(QMainWindow):
         )
 
         self.open_video_button = QPushButton("Open Video")
-        self.team_a_button  = QPushButton("Team A + 1")
-        self.team_b_button  = QPushButton("Team B + 1")
+        self.team_a_button = QPushButton("Team A + 1")
+        self.team_b_button = QPushButton("Team B + 1")
         self.undo_button = QPushButton("Undo Last Score")
         self.delete_button = QPushButton("Delete Selected Event")
         self.edit_event_time_button = QPushButton("Edit Event Time")
@@ -188,6 +193,18 @@ class MainWindow(QMainWindow):
 
         # Create the FFmpeg controller.
         self.ffmpeg_controller = FFmpegController()
+
+        # Initialize the video generation controller.
+        self.video_generation_controller = VideoGenerationController(
+            media_player=self.media_player,
+            video_generator=self.video_generator,
+            video_progress=self.video_progress,
+            ffmpeg_controller=self.ffmpeg_controller,
+            progress_bar=self.video_progress_bar,
+            status_label=self.video_status_label,
+            generate_button=self.generate_video_button,
+            cancel_button=self.cancel_video_button,
+        )
 
     def connect_signals(self):
         # Connect signals for video playback and progress updates.
@@ -768,8 +785,10 @@ class MainWindow(QMainWindow):
 
         try:
             save_game_file(file_path, self.game_data)
+            logger.info("Game saved successfully: %s", file_path)
 
         except (OSError, TypeError, ValueError) as error:
+            logger.exception("Failed to save game: %s", file_path)
             QMessageBox.critical(
                 self,
                 "Save Failed",
@@ -790,8 +809,10 @@ class MainWindow(QMainWindow):
         # Read and validate the file before modifying the current game.
         try:
             saved_data = load_game_file(file_path)
+            logger.info("Game loaded successfully: %s", file_path)
 
         except (OSError, json.JSONDecodeError, ValueError, TypeError) as error:
+            logger.exception("Failed to load game: %s", file_path)
             QMessageBox.critical(
                 self,
                 "Load Failed",
@@ -855,11 +876,15 @@ class MainWindow(QMainWindow):
 
         self.set_game_setup_enabled(False)
 
-        if os.path.exists(self.game_data.video_file):
+        if os.path.isfile(self.game_data.video_file):
             self.media_player.setSource(
                 QUrl.fromLocalFile(self.game_data.video_file)
             )
         else:
+            # Clear any previously loaded video.
+            self.media_player.stop()
+            self.media_player.setSource(QUrl())
+
             QMessageBox.warning(
                 self,
                 "Video Not Found",
@@ -868,12 +893,16 @@ class MainWindow(QMainWindow):
             )
 
     def generate_video(self):
-        # Check whether a video has been selected.
-        if not self.game_data.video_file:
+        # Check whether a video has been selected and still exists.
+        if (
+            not self.game_data.video_file
+            or not os.path.isfile(self.game_data.video_file)
+        ):
             QMessageBox.warning(
                 self,
-                "No Video",
-                "Please open a video file first."
+                "Video Not Available",
+                "The source video could not be found. "
+                "Please open the video file before generating the output."
             )
             return
 
@@ -901,58 +930,49 @@ class MainWindow(QMainWindow):
         if not output_file.lower().endswith(".mp4"):
             output_file += ".mp4"
 
-        self.current_output_file = output_file
+        # Prevent overwriting the original video.
+        source_file = os.path.normcase(
+            os.path.abspath(self.game_data.video_file)
+        )
+        target_file = os.path.normcase(
+            os.path.abspath(output_file)
+        )
 
-        # Get the video duration in seconds.
-        self.video_duration_seconds = self.media_player.duration() / 1000
-
-        if self.video_duration_seconds <= 0:
+        if source_file == target_file:
             QMessageBox.warning(
                 self,
-                "Invalid Video Duration",
-                "The video duration is not available. Please wait until the video loads."
+                "Invalid Output File",
+                "The output file cannot be the same as the original video. "
+                "Please choose a different filename."
             )
             return
 
-        # Build the timeline and FFmpeg filter.
-        timeline = self.video_generator.build_score_timeline(
-            self.media_player.duration()
-        )
-        ffmpeg_filter = self.video_generator.build_ffmpeg_filter(timeline)
-
-        # Prepare the FFmpeg command.
-        command = self.video_generator.build_ffmpeg_command(
+        # Start video generation using the new controller.
+        success, error_message = self.video_generation_controller.start(
             output_file,
-            ffmpeg_filter,
             self.video_quality_combo.currentData()
         )
 
-        # Reset the progress tracking state.
-        self.video_progress.reset()
-        self.video_generation_cancelled = False
-
-        # Reset the progress bar.
-        self.video_progress_bar.setValue(0)
-
-        self.video_progress_bar.setFormat("Generating video: 0%")
-        self.video_progress_bar.setVisible(True)
-        self.video_status_label.setText("Status: Generating video...")
-
-        # Start the elapsed-time timer.
-        self.video_progress.start()
-
-        # Prevent another generation request while FFmpeg is running.
-        self.generate_video_button.setEnabled(False)
-        self.cancel_video_button.setEnabled(True)
-
-        # Start FFmpeg asynchronously.
-        self.ffmpeg_controller.start(command)
+        # Show an error if video generation could not be started.
+        if not success:
+            if error_message == "FFmpeg is already running.":
+                QMessageBox.warning(
+                    self,
+                    "Video Generation In Progress",
+                    error_message
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Video Duration",
+                    error_message
+                )
 
     def update_video_progress(self, output):
         # Update the progress display using the output received from FFmpeg.
         self.video_progress.update_progress(
             output,
-            self.video_duration_seconds,
+            self.video_generation_controller.video_duration_seconds,
             self.video_progress_bar,
         )
 
@@ -970,20 +990,34 @@ class MainWindow(QMainWindow):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            self.video_generation_cancelled = True
+            self.video_generation_controller.generation_cancelled = True
             self.ffmpeg_controller.kill()
 
     def ffmpeg_process_error(self, error):
         # Handle failure to start FFmpeg.
         if error == QProcess.ProcessError.FailedToStart:
+            # Stop the elapsed-time timer.
+            self.video_progress.stop_timer()
+
+            # Record the total elapsed time.
+            elapsed_text = self.video_progress.get_elapsed_time_text()
+
+            logger.error(
+                "Video generation failed to start. "
+                "Elapsed time: %s",
+                elapsed_text,
+            )
+
             self.video_status_label.setText(
                 "Status: Video generation failed"
             )
-            self.video_progress.stop_timer()
             self.generate_video_button.setEnabled(True)
             self.cancel_video_button.setEnabled(False)
 
             self.video_progress_bar.setFormat("Generation failed")
+            self.video_elapsed_label.setText(
+                f"Elapsed time: {elapsed_text}"
+            )
 
             # Get the error message from FFmpegController.
             error_message = self.ffmpeg_controller.get_error_message(
@@ -1002,11 +1036,29 @@ class MainWindow(QMainWindow):
 
         # Calculate the total elapsed time.
         elapsed_text = self.video_progress.get_elapsed_time_text()
+        logger.info(
+            "Total video generation elapsed time: %s",
+            elapsed_text,
+        )
 
         self.generate_video_button.setEnabled(True)
         self.cancel_video_button.setEnabled(False)
 
-        if self.video_generation_cancelled:
+        output_file = (
+            self.video_generation_controller.current_output_file
+        )
+
+        output_exists = (
+            output_file
+            and os.path.isfile(output_file)
+            and os.path.getsize(output_file) > 0
+        )
+
+        if self.video_generation_controller.generation_cancelled:
+            logger.warning(
+                "Video generation cancelled. Elapsed time: %s",
+                elapsed_text,
+            )
             self.video_status_label.setText(
                 "Status: Video generation cancelled"
             )
@@ -1016,16 +1068,16 @@ class MainWindow(QMainWindow):
             )
 
             # Delete the incomplete output file.
-            if os.path.exists(self.current_output_file):
+            if output_file and os.path.exists(output_file):
                 try:
-                    os.remove(self.current_output_file)
+                    os.remove(output_file)
                 except OSError as error:
                     QMessageBox.warning(
                         self,
                         "Cleanup Warning",
                         f"Generation was cancelled, but the incomplete "
                         f"video file could not be deleted:\n\n"
-                        f"{self.current_output_file}\n\n{error}"
+                        f"{output_file}\n\n{error}"
                     )
 
             QMessageBox.information(
@@ -1035,7 +1087,16 @@ class MainWindow(QMainWindow):
                 f"Elapsed time: {elapsed_text}"
             )
 
-        elif exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
+        elif (
+            exit_code == 0
+            and exit_status == QProcess.ExitStatus.NormalExit
+            and output_exists
+        ):
+            logger.info(
+                "Video generation succeeded. Output file: %s. Elapsed time: %s",
+                output_file,
+                elapsed_text,
+            )
             self.video_status_label.setText("Status: Video generation completed")
             self.video_progress_bar.setValue(100)
             self.video_progress_bar.setFormat("Completed: 100%")
@@ -1051,6 +1112,14 @@ class MainWindow(QMainWindow):
                 f"Elapsed time: {elapsed_text}"
             )
         else:
+            logger.error(
+                "Video generation failed. Exit code: %s, exit status: %s. "
+                "Elapsed time: %s. FFmpeg error: %s",
+                exit_code,
+                exit_status,
+                elapsed_text,
+                self.ffmpeg_controller.error_output or "No error details available.",
+            )
             self.video_status_label.setText("Status: Video generation failed")
             self.video_progress_bar.setFormat("Generation failed")
 
@@ -1076,11 +1145,14 @@ class MainWindow(QMainWindow):
             return
 
         event.accept()
+        logger.info("Application closed.")
 
-app = QApplication(sys.argv)
+if __name__ == "__main__":
+    logger.info("Application starting.")
+    app = QApplication(sys.argv)
 
-window = MainWindow()
-window.resize(1200, 800)
-window.show()
+    window = MainWindow()
+    window.resize(1200, 800)
+    window.show()
 
-sys.exit(app.exec())
+    sys.exit(app.exec())
