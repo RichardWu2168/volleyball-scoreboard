@@ -4,7 +4,7 @@ A Windows desktop application for adding an accurate score timeline to recorded 
 
 ## Download for Windows
 
-**[Download Volleyball Scoreboard v1.0.0](https://github.com/RichardWu2168/volleyball-scoreboard/releases/download/v1.0.0/VolleyballScoreboard-Windows.zip)**
+**[Download Volleyball Scoreboard v1.1.0](https://github.com/RichardWu2168/volleyball-scoreboard/releases/download/v1.1.0/VolleyballScoreboard-Windows.zip)**
 
 You can also visit the [Releases page](https://github.com/RichardWu2168/volleyball-scoreboard/releases) to download the latest version.
 
@@ -173,6 +173,25 @@ You can create a desktop shortcut for convenient access.
 
 You do not need to install Python to run the packaged Windows application.
 
+## Troubleshooting and Logs
+
+The application writes log messages to help diagnose errors and troubleshoot problems.
+
+The log file is located at:
+
+```text
+%LOCALAPPDATA%\VolleyballScoreboard\logs\volleyball_scoreboard.log
+```
+
+### How to Find the Log File
+
+1. Press `Win + R` to open the Windows Run dialog.
+2. Enter `%LOCALAPPDATA%\VolleyballScoreboard\logs`.
+3. Press Enter.
+4. Open `volleyball_scoreboard.log` with a text editor, such as Notepad or Notepad++.
+
+If you encounter a problem, check the log file for error messages. When reporting an issue, you can include the log file to help with troubleshooting.
+
 ## Installing FFmpeg on Windows
 
 **FFmpeg is required for generating videos with scoreboard overlays.** It is not required for ordinary video playback within the application.
@@ -304,12 +323,14 @@ Technology choices may evolve as the project develops.
 ```text
 volleyball-scoreboard/
 ├── src/
+│   ├── app_logging.py
 │   ├── ffmpeg_controller.py
 │   ├── game.py
 │   ├── main.py
 │   ├── project.py
 │   ├── scoreboard.py
 │   ├── video_controller.py
+│   ├── video_generation_controller.py
 │   ├── video_generator.py
 │   └── video_progress.py
 ├── examples/
@@ -461,20 +482,26 @@ AI and automatic score recognition are not part of Version 1.
 
 ## Status
 
-**Version 1.0.0 released.**
+**Version 1.1.0 — New release**
 
-The first Windows release is available on the [GitHub Releases page](https://github.com/RichardWu2168/volleyball-scoreboard/releases).
+Version 1.1.0 improves application logging, saved-game validation, and video-generation error handling.
 
-Current features include:
+### Current Features
 
 * Video playback and manual score recording.
 * Timestamped score events with editing and deletion.
 * Saving and loading game data in JSON format.
+* Validation of saved game data before loading.
 * Recovery of saved games when the original video is missing.
+* Selection of a replacement video without losing saved scoring events.
 * Scoreboard overlays showing team names and scores.
 * Video quality selection, generation progress, and elapsed-time display.
 * Video generation cancellation.
+* Improved handling and reporting of video-generation errors.
+* Application logging to help diagnose errors and troubleshoot problems.
 * Prevention of Windows system sleep during video generation.
+
+For downloads and previous releases, visit the [GitHub Releases page](https://github.com/RichardWu2168/volleyball-scoreboard/releases).
 
 Future improvements may include more advanced scoring-event editing, automatic set transitions, keyboard shortcuts, and volleyball statistics.
 
