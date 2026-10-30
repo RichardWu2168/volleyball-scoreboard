@@ -238,8 +238,8 @@ class MainWindow(QMainWindow):
         self.position_slider.sliderMoved.connect(self.video_controller.seek)
         self.position_slider.sliderPressed.connect(self.video_controller.seek_from_slider)
 
-        self.team_a_starting_score.valueChanged.connect(self.update_starting_score_labels)
-        self.team_b_starting_score.valueChanged.connect(self.update_starting_score_labels)
+        self.team_a_starting_score.valueChanged.connect(self.update_starting_score_a_labels)
+        self.team_b_starting_score.valueChanged.connect(self.update_starting_score_b_labels)
         self.team_a_name.textChanged.connect(self.update_team_a_button)
         self.team_b_name.textChanged.connect(self.update_team_b_button)
 
@@ -438,11 +438,16 @@ class MainWindow(QMainWindow):
 
         self.update_score_labels()
 
-    def update_starting_score_labels(self):
+    def update_starting_score_a_labels(self):
         self.game_data.starting_score_a = self.team_a_starting_score.value()
-        self.game_data.starting_score_b = self.team_b_starting_score.value()
 
         self.team_a_score = self.game_data.starting_score_a
+
+        self.update_score_labels()
+
+    def update_starting_score_b_labels(self):
+        self.game_data.starting_score_b = self.team_b_starting_score.value()
+
         self.team_b_score = self.game_data.starting_score_b
 
         self.update_score_labels()
