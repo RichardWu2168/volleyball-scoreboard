@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import json
 import logging
@@ -188,8 +188,8 @@ class MainWindow(QMainWindow):
         self.video_quality_combo.addItem("Balanced (CRF 23)", 23)
         self.video_quality_combo.addItem("Smaller File (CRF 28)", 28)
 
-        # Use CRF 18 as the default.
-        self.video_quality_combo.setCurrentIndex(1)
+        # Use CRF 23 as the default.
+        self.video_quality_combo.setCurrentIndex(2)
 
         # Create the FFmpeg controller.
         self.ffmpeg_controller = FFmpegController()
@@ -1158,6 +1158,15 @@ if __name__ == "__main__":
 
     window = MainWindow()
     window.resize(1200, 800)
-    window.show()
+
+    # Center the initial window on the primary screen, then maximize it.
+    screen = app.primaryScreen()
+    if screen is not None:
+        available_geometry = screen.availableGeometry()
+        frame_geometry = window.frameGeometry()
+        frame_geometry.moveCenter(available_geometry.center())
+        window.move(frame_geometry.topLeft())
+
+    window.showMaximized()
 
     sys.exit(app.exec())
