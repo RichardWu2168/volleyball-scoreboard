@@ -1,3 +1,7 @@
+import os
+from pathlib import Path
+
+
 class VideoGenerator:
     # Builds the scoreboard timeline and FFmpeg overlay filter.
 
@@ -46,18 +50,9 @@ class VideoGenerator:
         """Escape text for use in FFmpeg's drawtext filter."""
         text = str(text)
 
-        # Escape backslashes first.
-        text = text.replace("\\", "\\\\")
-        text = text.replace(":", "\\:")
-        text = text.replace(",", "\\,")
-        text = text.replace("[", "\\[")
-        text = text.replace("]", "\\]")
-        text = text.replace("%", "\\%")
-
-        # Escape apostrophes for FFmpeg filter syntax.
-        text = text.replace("'", "'\\''")
-
-        return text
+        # Escape drawtext option syntax, then quote it for the filtergraph.
+        text = text.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+        return text.replace("'", "'\\''")
 
     def build_ffmpeg_filter(self, timeline):
         filters = []
@@ -68,6 +63,14 @@ class VideoGenerator:
         sets_a = self.game_data.team_a_sets_won
         sets_b = self.game_data.team_b_sets_won
         set_number = sets_a + sets_b + 1
+
+        font_option = ""
+        windows_directory = os.environ.get("SystemRoot")
+        if os.name == "nt" and windows_directory:
+            font_file = Path(windows_directory) / "Fonts" / "segoeui.ttf"
+            if font_file.is_file():
+                font_path = self.escape_ffmpeg_text(font_file.as_posix())
+                font_option = f"fontfile='{font_path}':"
 
         for i, period in enumerate(timeline):
             text = (
@@ -88,6 +91,8 @@ class VideoGenerator:
             filters.append(
                 "drawtext="
                 f"text='{text}':"
+                "expansion=none:"
+                f"{font_option}"
                 "fontcolor=white:"
                 "fontsize=72:"
                 "box=1:"
@@ -103,7 +108,7 @@ class VideoGenerator:
     def build_ffmpeg_command(
         self,
         output_file,
-        ffmpeg_filter,
+        filter_file,
         video_quality
     ):
         # Build the FFmpeg arguments for video generation.
@@ -111,8 +116,8 @@ class VideoGenerator:
             "-y",
             "-i",
             self.game_data.video_file,
-            "-vf",
-            ffmpeg_filter,
+            "-filter_script:v",
+            str(filter_file),
             "-c:v",
             "libx264",
             "-pix_fmt",

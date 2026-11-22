@@ -1,5 +1,4 @@
 import json
-import math
 
 def save_game_file(file_path, game_data):
     # Save game data to a JSON file.
@@ -14,6 +13,8 @@ def save_game_file(file_path, game_data):
         "events": game_data.events,
     }
 
+    validate_game_data(saved_data)
+
     with open(file_path, "w", encoding="utf-8") as file:
         json.dump(saved_data, file, indent=4)
 
@@ -21,6 +22,15 @@ def load_game_file(file_path):
     # Load and validate game data from a JSON file.
     with open(file_path, "r", encoding="utf-8") as file:
         saved_data = json.load(file)
+
+    validate_game_data(saved_data)
+    return saved_data
+
+
+def validate_game_data(saved_data):
+    """Check the project format used by both save and load."""
+    if not isinstance(saved_data, dict):
+        raise ValueError("The game must be a JSON object.")
 
     required_fields = [
         "video_file",
@@ -47,10 +57,10 @@ def load_game_file(file_path):
         if (
             not isinstance(value, int)
             or isinstance(value, bool)
-            or value < 0
+            or not 0 <= value <= 99
         ):
             raise ValueError(
-                f"'{field}' must be a non-negative integer."
+                f"'{field}' must be an integer between 0 and 99."
             )
 
     # Validate each event's structure and values first.
@@ -74,12 +84,15 @@ def load_game_file(file_path):
         if (
             not isinstance(event["time"], (int, float))
             or isinstance(event["time"], bool)
-            or not math.isfinite(event["time"])
             or event["time"] < 0
+            or event["time"] > 2_147_483_647
+            or (isinstance(event["time"], float) and not event["time"].is_integer())
         ):
             raise ValueError(
                 f"Event {index + 1} has an invalid timestamp."
             )
+
+        event["time"] = int(event["time"])
 
         for score_key in ("score_a", "score_b"):
             score = event[score_key]
@@ -93,13 +106,13 @@ def load_game_file(file_path):
                     f"Event {index + 1} has an invalid {score_key}: {event[score_key]}."
                 )
 
-    # A saved game must contain exactly one START event.
+    # A game with events begins with a single starting score at time zero.
     start_event_count = sum(
         1 for event in saved_data["events"]
         if event["team"] == "START"
     )
 
-    if start_event_count != 1:
+    if saved_data["events"] and start_event_count != 1:
         raise ValueError(
             "The game must contain exactly one START event."
         )
@@ -112,6 +125,11 @@ def load_game_file(file_path):
         saved_data["events"],
         key=lambda event: event["time"]
     )
+
+    if sorted_events and (
+        sorted_events[0]["team"] != "START" or sorted_events[0]["time"] != 0
+    ):
+        raise ValueError("The START event must be first and have timestamp 0.")
 
     for index, event in enumerate(sorted_events):
         if event["team"] == "START":
@@ -160,5 +178,3 @@ def load_game_file(file_path):
             raise ValueError(
                 f"'{field}' must be an integer between 0 and 9."
             )
-
-    return saved_data
