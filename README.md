@@ -2,21 +2,9 @@
 
 A Windows desktop application for adding an accurate score timeline to recorded volleyball game videos.
 
-## Download for Windows
+## Run on Windows
 
-**[Download Volleyball Scoreboard v1.1.0](https://github.com/RichardWu2168/volleyball-scoreboard/releases/download/v1.1.0/VolleyballScoreboard-Windows.zip)**
-
-You can also visit the [Releases page](https://github.com/RichardWu2168/volleyball-scoreboard/releases) to download the latest version.
-
-### Requirements
-
-* **Windows:** Download and extract the ZIP package, then run `VolleyballScoreboard.exe`.
-* **Python:** Not required to run the packaged application.
-* **FFmpeg:** Must be installed separately and added to your Windows `PATH` to generate videos with scoreboard overlays.
-
-See [Installing FFmpeg on Windows](#installing-ffmpeg-on-windows) for instructions.
-
-**Important:** Extract the entire ZIP file and keep all the application files together. Do not move the executable out of its folder.
+Version 1.3.0 is a source-code release. Follow [Run from Source](#run-from-source) to set up Python and launch the application. Video exports require FFmpeg on your Windows PATH. See [Installing FFmpeg on Windows](#installing-ffmpeg-on-windows).
 
 ## Problem
 
@@ -143,46 +131,9 @@ Use **Batch Generate Videos** to export several saved games unattended. The batc
 1. In the batch window, click **Add JSON Files…**. Use **Ctrl+click** to pick individual files or **Shift+click** to pick a range. Use **Add JSON Files…** again to add files from another folder.
 2. Review the queue. The app uses the source video stored in each JSON file. It resolves relative video paths from the JSON file's folder. Each output has the JSON file's name and an `.mp4` extension. The output folder defaults to the first selected JSON file's folder. Use **Choose Output Folder…** to change it.
 3. Click **Start Batch**. The app exports one video at a time, keeps Windows awake, and records results in the same window. It skips invalid games, missing videos, duplicate output names, and any output path that matches a source video in the batch. Existing outputs are skipped unless you select **Overwrite existing outputs**.
-4. Review the completed, failed, skipped, and cancelled counts and the status of each file. Completed rows show the export time when available. **Cancel Batch** stops the active export and leaves previously completed files in place. Click **Restart Batch** to check the same queue again. Keep **Overwrite existing outputs** unchecked to skip files already completed.
+4. Review the completed, failed, skipped, and cancelled counts and the status of each file. Completed rows show the export time when available. **Cancel Batch** stops the active export and leaves previously completed files in place. After a failure or cancellation, click **Restart Batch** to check the same queue and retry eligible files. Keep **Overwrite existing outputs** unchecked to skip files already completed.
 
 Batch export requires `ffmpeg.exe` on `PATH`. It can also use `ffprobe.exe` to read video metadata when available, and falls back to FFmpeg if FFprobe cannot run. The game open in the main window stays open while the batch runs.
-
-## Installing the Windows Application
-
-A packaged Windows version is intended for users who want to use the application without installing Python or setting up a development environment.
-
-### 1. Download the Application
-
-Download the ZIP package provided by the application developer.
-
-Extract the entire ZIP file to a folder on your computer.
-
-**Important:** Keep all files and subdirectories in the extracted application folder together. Do not move the executable out of that folder.
-
-### 2. Install FFmpeg
-
-FFmpeg must be installed separately for video generation. It is not included in the application package.
-
-See [Installing FFmpeg on Windows](#installing-ffmpeg-on-windows) below.
-
-### 3. Launch the Application
-
-Open the extracted application folder and double-click:
-
-```text
-VolleyballScoreboard.exe
-```
-
-You can create a desktop shortcut for convenient access.
-
-### 4. Start Using the Application
-
-1. Open a volleyball video.
-2. Record the scores while reviewing the game.
-3. Save the game data so you can continue later.
-4. Generate a scored video when the score timeline is complete.
-
-You do not need to install Python to run the packaged Windows application.
 
 ## Troubleshooting and Logs
 
@@ -360,18 +311,18 @@ volleyball-scoreboard/
 └── requirements.txt
 ```
 
-The `.venv/`, `build/`, and `dist/` directories are used for local development and packaging. They are not required in the source repository. The Windows distribution ZIP is published separately through GitHub Releases.
+The `.venv/`, `build/`, and `dist/` directories are used for local development and packaging. They are not required in the source repository.
 
-## Development Setup
+## Run from Source
 
-These instructions are for developers who want to run or modify the Python source code.
+Use these steps to run Volleyball Scoreboard on Windows.
 
 ### Prerequisites
 
 * Windows
 * Python
 * Git, if cloning the repository
-* FFmpeg, if testing video generation
+* FFmpeg, if exporting videos
 
 ### 1. Clone the Repository
 
@@ -399,15 +350,27 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### 4. Run the Application
+### 4. Install FFmpeg for Video Export
+
+Before launching the app for single or batch exports, follow [Installing FFmpeg on Windows](#installing-ffmpeg-on-windows). Open a new PowerShell window after updating PATH and run the following to verify the installation:
+
+```powershell
+ffmpeg -version
+```
+
+For playback and score editing only, you can skip this step.
+
+### 5. Run the Application
+
+If you opened a new PowerShell window, return to the project folder and activate the virtual environment again.
 
 ```powershell
 python src/main.py
 ```
 
-## Building the Windows Application
+## Optional Local Windows Build
 
-The application can be packaged using PyInstaller.
+Developers can build a local executable with PyInstaller.
 
 ### 1. Install PyInstaller
 
@@ -432,30 +395,11 @@ PyInstaller creates:
 
 The `.spec` file configures the build, including the application icon and image resource.
 
-### 3. Test and Package the Application
+### 3. Test the Local Build
 
-Launch:
+Run the executable in the build output folder. Windows Smart App Control may block unsigned local builds.
 
-```text
-dist\VolleyballScoreboard\VolleyballScoreboard.exe
-```
-
-Test video playback, score recording, saving and loading games, and video generation.
-
-To create the distribution ZIP, run this command in PowerShell from the project root:
-
-```powershell
-Compress-Archive `
-    -Path .\dist\VolleyballScoreboard `
-    -DestinationPath .\dist\VolleyballScoreboard-Windows.zip `
-    -Force
-```
-
-Distribute the ZIP file rather than the standalone executable, because the packaged application depends on the other files generated by PyInstaller.
-
-FFmpeg is installed separately by each user and is not included in the application package.
-
-Before sharing a release, test the extracted ZIP package on another Windows computer to check that the application runs without your development environment.
+Test video playback, score recording, saving and loading games, and single and batch exports.
 
 ## Future Improvements
 
@@ -485,9 +429,9 @@ AI and automatic score recognition are not part of Version 1.
 
 ## Status
 
-**Version 1.1.0 — New release**
+**Version 1.3.0**
 
-Version 1.1.0 improves application logging, saved-game validation, and video-generation error handling.
+Version 1.3.0 adds unattended batch exports and NVIDIA GPU encoding with H.264 or H.265. Batch exports show elapsed time and let you retry failed or cancelled jobs.
 
 ### Current Features
 
@@ -504,7 +448,7 @@ Version 1.1.0 improves application logging, saved-game validation, and video-gen
 * Application logging to help diagnose errors and troubleshoot problems.
 * Prevention of Windows system sleep during video generation.
 
-For downloads and previous releases, visit the [GitHub Releases page](https://github.com/RichardWu2168/volleyball-scoreboard/releases).
+For release notes and source archives, visit the [GitHub Releases page](https://github.com/RichardWu2168/volleyball-scoreboard/releases).
 
 Future improvements may include more advanced scoring-event editing, automatic set transitions, keyboard shortcuts, and volleyball statistics.
 

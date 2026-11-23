@@ -215,9 +215,14 @@ class BatchVideoDialog(QDialog):
                 source_keys.add(path_key(source))
                 if not source.is_file():
                     raise ValueError("Source video is missing.")
-            except (OSError, ValueError, RecursionError) as error:
+            except (OSError, ValueError) as error:
                 job.status = "Skipped"
                 job.detail = str(error)
+            except Exception:
+                # A problem loading one project must not stop the rest of the queue.
+                logger.exception("Could not prepare batch project: %s", job.project)
+                job.status = "Skipped"
+                job.detail = "Could not load the project. See the application log for details."
 
         output_counts = Counter(path_key(job.output) for job in self.jobs)
         for job in self.jobs:
@@ -266,7 +271,7 @@ class BatchVideoDialog(QDialog):
         for widget in (self.add_button, self.remove_button, self.folder_button, self.overwrite_box,
                        self.close_button):
             widget.setEnabled(not self.running)
-        can_start = any(job.status in ("Ready", "Cancelled") for job in self.jobs)
+        can_start = any(job.status in ("Ready", "Failed", "Cancelled") for job in self.jobs)
         self.start_button.setEnabled(not self.running and can_start)
         self.cancel_button.setEnabled(self.running and not self.cancelled)
 
@@ -474,7 +479,7 @@ class BatchVideoDialog(QDialog):
                 job.status = "Cancelled"
                 self.show_row(row)
         counts = Counter(job.status for job in self.jobs)
-        if counts["Cancelled"]:
+        if counts["Failed"] or counts["Cancelled"]:
             self.start_button.setText("Restart Batch")
         self.summary_label.setText(
             f"{counts['Completed']} completed, {counts['Failed']} failed, "

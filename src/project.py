@@ -20,10 +20,12 @@ def save_game_file(file_path, game_data):
 
 def load_game_file(file_path):
     # Load and validate game data from a JSON file.
-    with open(file_path, "r", encoding="utf-8") as file:
-        saved_data = json.load(file)
-
-    validate_game_data(saved_data)
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            saved_data = json.load(file)
+        validate_game_data(saved_data)
+    except RecursionError as error:
+        raise ValueError("The game file contains too many nested JSON values.") from error
     return saved_data
 
 
@@ -103,7 +105,7 @@ def validate_game_data(saved_data):
                 or score < 0
             ):
                 raise ValueError(
-                    f"Event {index + 1} has an invalid {score_key}: {event[score_key]}."
+                    f"Event {index + 1} has an invalid {score_key}."
                 )
 
     # A game with events begins with a single starting score at time zero.
@@ -153,6 +155,8 @@ def validate_game_data(saved_data):
 
     if not isinstance(saved_data["video_file"], str):
         raise ValueError("'video_file' must be a string.")
+    if "\x00" in saved_data["video_file"]:
+        raise ValueError("'video_file' must not contain a null character.")
 
     if (
         not isinstance(saved_data["team_a_name"], str)
@@ -165,6 +169,12 @@ def validate_game_data(saved_data):
         or not saved_data["team_b_name"].strip()
     ):
         raise ValueError("'team_b_name' must be a non-empty string.")
+
+    for field in ("video_file", "team_a_name", "team_b_name"):
+        try:
+            saved_data[field].encode("utf-8")
+        except UnicodeEncodeError as error:
+            raise ValueError(f"'{field}' contains invalid Unicode text.") from error
 
     for field in ("team_a_sets_won", "team_b_sets_won"):
         value = saved_data.get(field, 0)
