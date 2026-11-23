@@ -132,9 +132,20 @@ For example:
 
 The scoreboard displays both team names and their current scores. FFmpeg renders the overlay onto the video and copies the audio track it selects without re-encoding. If that audio codec is incompatible with MP4, generation fails.
 
-The user can select a video quality setting before generation. The application also displays generation progress and elapsed time and allows the user to cancel an ongoing operation.
+Select **Export Encoder** and **Video Quality** before generation. The default is **NVIDIA GPU (H.265)** with **High Quality (CQ 18)**. **CPU** uses x264 with CRF. **NVIDIA GPU (H.264)** and **NVIDIA GPU (H.265)** use CUDA decoding on supported inputs and NVENC encoding. Both use CQ by default. Select **Target Bitrate** to use an average video bitrate instead of CQ. The starting targets are 55 Mbps for H.264 and 40 Mbps for H.265. Actual file size also depends on duration and audio bitrate. The scoreboard overlay still runs on the CPU. NVIDIA mode requires a compatible GPU, driver, and FFmpeg build. If a source or system cannot use NVIDIA mode, select CPU and retry. CQ and CRF use different quality controls, and GPU output may be substantially larger. The application also displays generation progress and elapsed time and allows the user to cancel an ongoing operation.
 
 Choose an output path different from the source video. The app writes the new video to the chosen path after generation succeeds. Cancelling an export preserves any existing file at the destination.
+
+### 6. Batch Generate Videos
+
+Use **Batch Generate Videos** to export several saved games unattended. The batch uses the encoder and the quality preset or bitrate target selected in the main window when you start it. The batch window shows the active setting as **Video Quality** or **Target Bitrate**.
+
+1. In the batch window, click **Add JSON Files…**. Use **Ctrl+click** to pick individual files or **Shift+click** to pick a range. Use **Add JSON Files…** again to add files from another folder.
+2. Review the queue. The app uses the source video stored in each JSON file. It resolves relative video paths from the JSON file's folder. Each output has the JSON file's name and an `.mp4` extension. The output folder defaults to the first selected JSON file's folder. Use **Choose Output Folder…** to change it.
+3. Click **Start Batch**. The app exports one video at a time, keeps Windows awake, and records results in the same window. It skips invalid games, missing videos, duplicate output names, and any output path that matches a source video in the batch. Existing outputs are skipped unless you select **Overwrite existing outputs**.
+4. Review the completed, failed, skipped, and cancelled counts and the status of each file. Completed rows show the export time when available. **Cancel Batch** stops the active export and leaves previously completed files in place. Click **Restart Batch** to check the same queue again. Keep **Overwrite existing outputs** unchecked to skip files already completed.
+
+Batch export requires `ffmpeg.exe` on `PATH`. It can also use `ffprobe.exe` to read video metadata when available, and falls back to FFmpeg if FFprobe cannot run. The game open in the main window stays open while the batch runs.
 
 ## Installing the Windows Application
 
@@ -324,12 +335,14 @@ Technology choices may evolve as the project develops.
 volleyball-scoreboard/
 ├── src/
 │   ├── app_logging.py
+│   ├── batch_video_dialog.py
 │   ├── ffmpeg_controller.py
 │   ├── game.py
 │   ├── main.py
 │   ├── project.py
 │   ├── scoreboard.py
 │   ├── video_controller.py
+│   ├── video_export.py
 │   ├── video_generation_controller.py
 │   ├── video_generator.py
 │   └── video_progress.py

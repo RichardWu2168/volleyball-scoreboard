@@ -12,8 +12,9 @@ class FFmpegController(QObject):
     process_error_occurred = Signal(object)
     process_finished = Signal(int, object)
 
-    def __init__(self):
+    def __init__(self, *, manage_sleep=True):
         super().__init__()
+        self.manage_sleep = manage_sleep
 
         # Create the process used to run FFmpeg.
         self.process = QProcess(self)
@@ -78,7 +79,8 @@ class FFmpegController(QObject):
                 "FFmpeg failed to start. Check whether FFmpeg is installed "
                 "and accessible."
             )
-            self.restore_system_sleep()
+            if self.manage_sleep:
+                self.restore_system_sleep()
 
         # Forward the process error through the controller's signal.
         self.process_error_occurred.emit(error)
@@ -122,12 +124,13 @@ class FFmpegController(QObject):
     def _handle_process_finished(self, exit_code, exit_status):
         # Restore normal power behavior when FFmpeg finishes,
         # fails, or is terminated.
-        self.restore_system_sleep()
+        if self.manage_sleep:
+            self.restore_system_sleep()
 
         # Forward the process completion through the controller's signal.
         self.process_finished.emit(exit_code, exit_status)
 
-    def start(self, command):
+    def start(self, command, *, program="ffmpeg"):
         logger.info("Starting FFmpeg process.")
         # Do not start FFmpeg if it is already running.
         if self.is_running():
@@ -137,10 +140,11 @@ class FFmpegController(QObject):
         self.error_output = ""
 
         # Prevent sleep before starting FFmpeg.
-        self.prevent_system_sleep()
+        if self.manage_sleep:
+            self.prevent_system_sleep()
 
         # Start FFmpeg asynchronously.
-        self.process.setProgram("ffmpeg")
+        self.process.setProgram(program)
         self.process.setArguments(command)
         self.process.start()
 

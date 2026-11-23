@@ -8,6 +8,7 @@ from PySide6.QtCore import QUrl, Qt, QProcess
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
+    QCheckBox,
     QApplication,
     QComboBox,
     QFileDialog,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from app_logging import setup_logging
+from batch_video_dialog import BatchVideoDialog
 from ffmpeg_controller import FFmpegController
 from game import GameData
 from project import load_game_file, save_game_file
@@ -156,6 +158,8 @@ class MainWindow(QMainWindow):
         self.save_button = QPushButton("Save Game")
         self.load_button = QPushButton("Load Game")
         self.generate_video_button = QPushButton("Generate Video")
+        self.batch_video_button = QPushButton("Batch Generate Videos…")
+        self.batch_video_dialog = None
 
         self.cancel_video_button = QPushButton("Cancel Generation")
         self.cancel_video_button.setEnabled(False)
@@ -182,14 +186,30 @@ class MainWindow(QMainWindow):
         self.video_status_label = QLabel("Status: Ready")
 
         # Video quality selection
+        self.video_encoder_combo = QComboBox()
+        self.video_encoder_combo.addItem("CPU", None)
+        self.video_encoder_combo.addItem("NVIDIA GPU (H.264)", "h264")
+        self.video_encoder_combo.addItem("NVIDIA GPU (H.265)", "hevc")
+        self.video_encoder_combo.setCurrentIndex(self.video_encoder_combo.findData("hevc"))
+        self.video_encoder_combo.setToolTip(
+            "NVIDIA GPU requires a compatible driver and FFmpeg build. "
+            "GPU exports can have different file sizes at the same quality level."
+        )
         self.video_quality_combo = QComboBox()
         self.video_quality_combo.addItem("Highest Quality (CRF 15)", 15)
         self.video_quality_combo.addItem("High Quality (CRF 18)", 18)
         self.video_quality_combo.addItem("Balanced (CRF 23)", 23)
         self.video_quality_combo.addItem("Smaller File (CRF 28)", 28)
 
-        # Use CRF 23 as the default.
-        self.video_quality_combo.setCurrentIndex(2)
+        self.video_quality_combo.setCurrentIndex(self.video_quality_combo.findData(18))
+        self.target_bitrate_box = QCheckBox("Target Bitrate")
+        self.target_bitrate_box.setToolTip("Use an average video bitrate target instead of CQ.")
+        self.target_bitrate_spin = QSpinBox()
+        self.target_bitrate_spin.setRange(1, 200)
+        self.target_bitrate_spin.setSuffix(" Mbps")
+        self.video_encoder_combo.currentIndexChanged.connect(self.update_video_quality_options)
+        self.target_bitrate_box.toggled.connect(self.update_video_rate_controls)
+        self.update_video_quality_options()
 
         # Create the FFmpeg controller.
         self.ffmpeg_controller = FFmpegController()
@@ -253,6 +273,7 @@ class MainWindow(QMainWindow):
         self.save_button.clicked.connect(self.save_game)
         self.load_button.clicked.connect(self.load_game)
         self.generate_video_button.clicked.connect(self.generate_video)
+        self.batch_video_button.clicked.connect(self.open_batch_video_dialog)
         self.cancel_video_button.clicked.connect(self.cancel_video_generation)
         self.event_list.itemClicked.connect(self.event_selected)
         self.team_a_sets_won.valueChanged.connect(self.update_set_number)
@@ -370,12 +391,22 @@ class MainWindow(QMainWindow):
 
         right_layout.addLayout(event_buttons_layout)
 
+        encoder_layout = QHBoxLayout()
+        encoder_layout.addWidget(QLabel("Export Encoder:"), 1)
+        encoder_layout.addWidget(self.video_encoder_combo, 2)
+        right_layout.addLayout(encoder_layout)
+
         # Video quality selection
         quality_layout = QHBoxLayout()
         quality_layout.addWidget(QLabel("Video Quality:"), 1)
         quality_layout.addWidget(self.video_quality_combo, 2)
 
         right_layout.addLayout(quality_layout)
+
+        bitrate_layout = QHBoxLayout()
+        bitrate_layout.addWidget(self.target_bitrate_box, 1)
+        bitrate_layout.addWidget(self.target_bitrate_spin, 2)
+        right_layout.addLayout(bitrate_layout)
 
         # Create a horizontal layout for video generation controls.
         video_generation_layout = QHBoxLayout()
@@ -384,6 +415,7 @@ class MainWindow(QMainWindow):
 
         # Add the controls to the right layout.
         right_layout.addLayout(video_generation_layout)
+        right_layout.addWidget(self.batch_video_button)
 
         # Video generation progress
         right_layout.addWidget(self.video_status_label)
@@ -897,7 +929,44 @@ class MainWindow(QMainWindow):
                 f"{self.game_data.video_file}"
             )
 
+    def update_video_quality_options(self):
+        nvidia_codec = self.video_encoder_combo.currentData()
+        quality_control = "CQ" if nvidia_codec else "CRF"
+        for index in range(self.video_quality_combo.count()):
+            label = self.video_quality_combo.itemText(index).split(" (", 1)[0]
+            value = self.video_quality_combo.itemData(index)
+            self.video_quality_combo.setItemText(index, f"{label} ({quality_control} {value})")
+        if nvidia_codec:
+            self.target_bitrate_spin.setValue(40 if nvidia_codec == "hevc" else 55)
+        self.update_video_rate_controls()
+
+    def update_video_rate_controls(self):
+        nvidia_enabled = self.video_encoder_combo.currentData() is not None
+        self.target_bitrate_box.setVisible(nvidia_enabled)
+        self.target_bitrate_spin.setVisible(nvidia_enabled)
+        use_bitrate = self.export_bitrate_mbps() is not None
+        self.target_bitrate_spin.setEnabled(use_bitrate)
+        self.video_quality_combo.setEnabled(not use_bitrate)
+
+    def export_bitrate_mbps(self):
+        if self.video_encoder_combo.currentData() and self.target_bitrate_box.isChecked():
+            return self.target_bitrate_spin.value()
+        return None
+
+    def open_batch_video_dialog(self):
+        if self.batch_video_dialog is None:
+            self.batch_video_dialog = BatchVideoDialog(self)
+            self.batch_video_dialog.running_changed.connect(self.batch_running_changed)
+        self.batch_video_dialog.show()
+        self.batch_video_dialog.raise_()
+        self.batch_video_dialog.activateWindow()
+
+    def batch_running_changed(self, running):
+        self.generate_video_button.setEnabled(not running)
+
     def generate_video(self):
+        if self.batch_video_dialog is not None and self.batch_video_dialog.running:
+            return
         # Check whether a video has been selected and still exists.
         if (
             not self.game_data.video_file
@@ -959,7 +1028,9 @@ class MainWindow(QMainWindow):
         # Start video generation using the new controller.
         success, error_message = self.video_generation_controller.start(
             output_file,
-            self.video_quality_combo.currentData()
+            self.video_quality_combo.currentData(),
+            nvidia_codec=self.video_encoder_combo.currentData(),
+            bitrate_mbps=self.export_bitrate_mbps(),
         )
 
         # Show an error if video generation could not be started.
@@ -1134,7 +1205,10 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self, event):
-        if self.ffmpeg_controller.is_running():
+        if (
+            self.ffmpeg_controller.is_running()
+            or (self.batch_video_dialog is not None and self.batch_video_dialog.running)
+        ):
             QMessageBox.warning(
                 self,
                 "Video Generation in Progress",

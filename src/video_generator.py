@@ -109,23 +109,38 @@ class VideoGenerator:
         self,
         output_file,
         filter_file,
-        video_quality
+        video_quality,
+        *,
+        nvidia_codec=None,
+        bitrate_mbps=None,
     ):
-        # Build the FFmpeg arguments for video generation.
+        if nvidia_codec:
+            # Leave decoded frames in system memory for the drawtext filter.
+            decoder_args = ["-hwaccel", "cuda"]
+            encoder_args = ["-c:v", f"{nvidia_codec}_nvenc", "-preset", "p4", "-rc", "vbr"]
+            if bitrate_mbps is None:
+                encoder_args.extend(["-cq", str(video_quality), "-b:v", "0"])
+            else:
+                encoder_args.extend(["-b:v", f"{bitrate_mbps}M"])
+            if nvidia_codec == "hevc":
+                encoder_args.extend(["-tag:v", "hvc1"])
+        else:
+            decoder_args = []
+            encoder_args = [
+                "-c:v", "libx264", "-preset", "medium", "-crf", str(video_quality),
+            ]
+
         return [
+            "-nostdin",
             "-y",
+            *decoder_args,
             "-i",
             self.game_data.video_file,
-            "-filter_script:v",
+            "-/filter:v",
             str(filter_file),
-            "-c:v",
-            "libx264",
             "-pix_fmt",
             "yuv420p",
-            "-preset",
-            "medium",
-            "-crf",
-            str(video_quality),
+            *encoder_args,
             "-c:a",
             "copy",
             "-progress",

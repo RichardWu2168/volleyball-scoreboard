@@ -1,6 +1,5 @@
 import logging
-from pathlib import Path
-from tempfile import TemporaryDirectory
+from video_export import VideoExport
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +29,16 @@ class VideoGenerationController:
 
         # Track the current generation state.
         self.current_output_file = None
-        self.temporary_directory = None
-        self.temporary_output_file = None
+        self.export = None
         self.video_duration_seconds = 0
         self.generation_cancelled = False
 
-    def start(self, output_file, quality):
+    def start(self, output_file, quality, *, nvidia_codec=None, bitrate_mbps=None):
         logger.info(
-            "Starting video generation. Output: %s, quality: %s",
+            "Starting video generation. Output: %s, encoder: %s, quality: %s",
             output_file,
-            quality,
+            f"{nvidia_codec}_nvenc" if nvidia_codec else "libx264",
+            f"{bitrate_mbps} Mbps target" if bitrate_mbps is not None else quality,
         )
         if self.ffmpeg_controller.is_running():
             return False, "FFmpeg is already running."
@@ -57,29 +56,16 @@ class VideoGenerationController:
                 "Please wait until the video loads."
             )
 
-        # Build the timeline and FFmpeg filter.
-        timeline = self.video_generator.build_score_timeline(duration_ms)
-        ffmpeg_filter = self.video_generator.build_ffmpeg_filter(timeline)
-
-        # Keep the filter and partial video together on the destination volume.
-        self.current_output_file = Path(output_file)
+        self.current_output_file = output_file
         try:
-            self.temporary_directory = TemporaryDirectory(
-                prefix=".volleyball-scoreboard-", dir=self.current_output_file.absolute().parent
+            self.export = VideoExport(output_file)
+            command = self.export.prepare(
+                self.video_generator, duration_ms, quality,
+                nvidia_codec=nvidia_codec, bitrate_mbps=bitrate_mbps,
             )
-            work_directory = Path(self.temporary_directory.name)
-            filter_file = work_directory / "scoreboard.filter"
-            filter_file.write_text(ffmpeg_filter, encoding="utf-8")
-            self.temporary_output_file = work_directory / "scored.mp4"
-        except OSError as error:
+        except (OSError, ValueError) as error:
             self.cleanup()
             return False, f"Could not prepare the export: {error}"
-
-        command = self.video_generator.build_ffmpeg_command(
-            str(self.temporary_output_file),
-            filter_file,
-            quality,
-        )
 
         # Reset the generation state.
         self.video_duration_seconds = video_duration_seconds
@@ -120,15 +106,9 @@ class VideoGenerationController:
         return True, None
 
     def publish_output(self):
-        if self.temporary_output_file.stat().st_size == 0:
-            raise OSError("FFmpeg produced an empty video file.")
-        self.temporary_output_file.replace(self.current_output_file)
+        self.export.publish(overwrite=True)
 
     def cleanup(self):
-        if self.temporary_directory is not None:
-            try:
-                self.temporary_directory.cleanup()
-            except OSError:
-                logger.exception("Could not clean up temporary export files.")
-        self.temporary_directory = None
-        self.temporary_output_file = None
+        if self.export is not None:
+            self.export.cleanup()
+            self.export = None
