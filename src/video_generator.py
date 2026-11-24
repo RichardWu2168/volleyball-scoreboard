@@ -2,6 +2,15 @@ import os
 from pathlib import Path
 
 
+def describe_export_settings(quality, *, nvidia_codec=None, bitrate_mbps=None):
+    if nvidia_codec is None:
+        return f"CPU H.264 (libx264), CRF {quality}"
+
+    codec = "H.265" if nvidia_codec == "hevc" else "H.264"
+    rate = f"CQ {quality}" if bitrate_mbps is None else f"target bitrate {bitrate_mbps} Mbps"
+    return f"NVIDIA {codec} ({nvidia_codec}_nvenc), {rate}"
+
+
 class VideoGenerator:
     # Builds the scoreboard timeline and FFmpeg overlay filter.
 
@@ -130,6 +139,9 @@ class VideoGenerator:
                 "-c:v", "libx264", "-preset", "medium", "-crf", str(video_quality),
             ]
 
+        settings = describe_export_settings(
+            video_quality, nvidia_codec=nvidia_codec, bitrate_mbps=bitrate_mbps
+        )
         return [
             "-nostdin",
             "-y",
@@ -141,6 +153,8 @@ class VideoGenerator:
             "-pix_fmt",
             "yuv420p",
             *encoder_args,
+            "-metadata",
+            f"comment=Volleyball Scoreboard export: {settings}",
             "-c:a",
             "copy",
             "-progress",

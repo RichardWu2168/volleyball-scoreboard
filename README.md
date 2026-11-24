@@ -137,6 +137,12 @@ Batch export requires `ffmpeg.exe` on `PATH`. It can also use `ffprobe.exe` to r
 
 ## Troubleshooting and Logs
 
+Single and batch exports record the destination, encoder, and selected CQ, CRF, or bitrate target in the application log. The finished MP4 also stores the encoder and rate setting in its comment metadata. To read that comment, run:
+
+```powershell
+ffprobe -v error -show_entries format_tags=comment -of default=noprint_wrappers=1 "scored-video.mp4"
+```
+
 The application writes log messages to help diagnose errors and troubleshoot problems.
 
 The log file is located at:

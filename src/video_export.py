@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from video_generator import describe_export_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,6 +23,10 @@ class VideoExport:
     def prepare(self, generator, duration_ms, quality, *, nvidia_codec=None, bitrate_mbps=None):
         timeline = generator.build_score_timeline(duration_ms)
         self.filter_file.write_text(generator.build_ffmpeg_filter(timeline), encoding="utf-8")
+        settings = describe_export_settings(
+            quality, nvidia_codec=nvidia_codec, bitrate_mbps=bitrate_mbps
+        )
+        logger.info("Export settings for %s: %s", self.destination, settings)
         return generator.build_ffmpeg_command(
             str(self.video_file), self.filter_file, quality,
             nvidia_codec=nvidia_codec, bitrate_mbps=bitrate_mbps,
